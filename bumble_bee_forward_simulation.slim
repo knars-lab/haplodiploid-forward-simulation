@@ -1,0 +1,329 @@
+initialize() {
+	initializeSLiMModelType("nonWF");
+	// Constants	
+	defineConstant("max_colony_size", 100); 
+	defineConstant("max_queens_per_colony", 5);
+	defineConstant("K", 10000);
+	defineConstant("queen_succes_baseline_p", 0.5);
+	defineConstant("population_size_p", 0.8);
+	defineConstant("competition_threshold", 0.8);
+	defineConstant("sex_ratio", 0.3);
+	defineConstant("start_population_size", 1000);
+	defineConstant("starting_virgin_queens", 50);
+	
+	// Initialise reproductive population sizes
+	defineGlobal("Nf", 0);
+	defineGlobal("Nm", 0);
+
+	// Deleterious mutations
+	initializeMutationType("m1", 0.5, "f", -0.001);
+
+	// Neutral mutations
+	initializeMutationType("m2", 0.5, "f", 0.0);
+
+	// Beneficial mutations
+	initializeMutationType("m3", 0.5, "f", 0.001);
+	initializeMutationRate(1e-8);
+	m1.convertToSubstitution = T;		// converts mutations that have become fixed into substitutions
+	m1.haploidDominanceCoeff = 1.0;	// haploid dosage coefficient
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, 999999);
+	initializeRecombinationRate(1e-6);
+	initializeSex("A");	
+}
+
+// function definitions
+function (object<Individual>) GenerateMale(
+												object<Individual> queen,  
+												integer strand, 
+												integer breaks){
+	if (strand == 1){
+		new_male = subpop.addRecombinant(
+       				strand1 = queen.genome1,
+        				strand2 = queen.genome2,
+        				breaks1 = breaks,
+        				strand3 = NULL,
+        				strand4 = NULL,
+        				breaks2 = NULL,
+        				sex = "M");
+    }
+    else{
+		new_male = subpop.addRecombinant(
+						strand1 = queen.genome2,
+						strand2 = queen.genome1,
+						breaks1 = breaks,
+						strand3 = NULL,
+						strand4 = NULL,
+						breaks2 = NULL,
+						sex = "M");				}
+    return new_male;
+}
+
+function (object<Individual>) GenerateFemale(
+													object<Individual> queen,
+													object<Individual> male, 
+													integer strand, 
+													integer breaks) {
+	if (strand == 1){
+   	new_female = subpop.addRecombinant(
+   						strand1 = queen.genome1,
+							strand2 = queen.genome2,
+							breaks1 = breaks,
+							strand3 = male.genome1,
+							strand4 = NULL,
+							breaks2 = NULL,
+							sex = "F");
+    }
+    else{
+		new_female = subpop.addRecombinant(
+							strand1 = queen.genome2,
+							strand2 = queen.genome1,
+							breaks1 = breaks,
+							strand3 = male.genome1,
+							strand4 = NULL,
+							breaks2 = NULL,
+							sex = "F");
+				}
+    return new_female;
+}    
+    
+function (float) getColonyFit(
+    										object<Individual> breeding_queens,
+    										object<Individual> breeding_males,
+    										float fit,
+    										object<Individual> inds) {
+    		colony_fit = rep(0.0, size(breeding_queens));
+    		
+    		for (i in seqAlong(breeding_queens)) {
+        		queen_index = match(breeding_queens[i].index, inds.index);
+      		male_index = match(breeding_males[i].index, inds.index);
+        		colony_fit[i] = fit[queen_index] * fit[male_index];
+    		}
+    		return colony_fit;
+}
+
+function (integer) sampleColonySizes(float colony_fit)
+{
+    colony_sizes = integer(size(colony_fit));
+
+    for (i in seqAlong(colony_fit)) {
+
+        p = min(1.0, 0.5 * colony_fit[i]);
+
+        colony_sizes[i] = rbinom(1, max_colony_size, p);
+    }
+    return colony_sizes;
+}
+
+
+reproduction(p1) {
+// generate offspring in subpop, in one "big bang"
+	
+	// initilise vectors 
+	breeding_queens = NULL;
+	colony_fit = NULL;
+	colony_sizes = NULL;
+	sampled_sex_ratio = 0.0;	
+	
+	// retrieve individuals of current subpopulation 
+	inds = subpop.individuals;
+	// create logical vector with true false labels 
+	is_female = (inds.sex == "F") ;
+	is_male = !is_female;
+	// retrieves the male or female individuals 
+	females = inds[is_female];
+	males = inds[is_male];
+
+	
+	chr = sim.chromosome;
+	// Get fitness values for all individuals
+	fit = subpop.cachedFitness(NULL);
+	fem_weights = fit[is_female];
+	male_weights = fit[is_male];
+	
+	// ----------------------------------------------------------------------------
+	// 1. Determine the colony founding queens and the mating males.  
+	// ----------------------------------------------------------------------------
+		
+	// Select virgin queens
+	virgin_queens = inds[inds.tag == 1];
+
+	// Extract fitness values of virgin queens
+	queen_weights = fit[inds.tag == 1];
+		
+	// sample breeding queens
+	// samples the colony founding queens that survide and mate 	
+		
+	for (i in seqAlong(virgin_queens)) {
+		// p = change a queens survives and mates
+		p = queen_succes_baseline_p * queen_weights[i];
+			
+		if (rbinom(1, 1, p) == 1) {
+			breeding_queens = c(breeding_queens, virgin_queens[i]);
+						
+		}
+	}
+	// sample breeding males, males may mate multiple times 
+	breeding_males = NULL;	
+	while (size(breeding_males) < size(breeding_queens)) {
+		breeding_male = sample(males, 1 , replace = T, weights = male_weights);		
+		breeding_males = c(breeding_males, breeding_male);
+	} 
+		
+	// ----------------------------------------------------------------------------
+	// 2. Determine colony sizes 
+	// ---------------------------------------------------------------------------- 
+	/*
+	Determine the size of each colony, which is limited by competition.
+	When total population size exceeds maximum population size populations
+	are down sampled depending on the colony fitness. 
+		
+	Competition is determined BEFORE down sampling, as colonies may still 
+	experience competition from non surviving colonies. 
+	*/
+		
+			
+	// sample population size from k 
+	max_population_size = rbinom(1, K , population_size_p);
+	number_of_colonies = size(breeding_queens);
+	max_colonies = K / max_colony_size;
+		
+	//calculate colony fitness 
+	colony_fit = getColonyFit(breeding_queens, breeding_males, fit, inds);
+		
+ 	//competition factor is > 1 when number of colonies exceeds competition threshold 		
+	competition_factor = 1;
+	if (number_of_colonies > (competition_threshold * max_colonies)) {
+		competition_factor = competition_factor * 
+									(competition_threshold * number_of_colonies) / max_colonies;
+		}
+		
+	// Sample colony sizes, which depend on competition and colony fitness 
+	for (i in seqAlong(colony_fit)) {  
+		p = min(1.0, (0.5 * colony_fit[i]*(1/competition_factor)));				
+		curr_colony_size = rbinom(1, max_colony_size, p);
+		colony_sizes = c(colony_sizes, curr_colony_size);
+	}
+		
+	// Down sample colonies when total population exceeds the maximum population size.
+	if (sum(colony_sizes) > max_population_size) {
+		while (sum(colony_sizes) > max_population_size) {
+			down_sampled_index = sample(seqAlong(breeding_queens), 1, weights = 1.0 / colony_fit);
+			breeding_queens = breeding_queens[seqAlong(breeding_queens) != down_sampled_index];
+			colony_sizes = colony_sizes[seqAlong(colony_sizes) != down_sampled_index];
+			colony_fit = colony_fit[seqAlong(colony_fit) != down_sampled_index];	
+		}
+	}
+		
+	// ----------------------------------------------------------------------------
+	// 3. Per colony male and female generation 
+	// ----------------------------------------------------------------------------
+	
+	for (i in seqAlong(breeding_queens)) {
+		colony_females = NULL;
+			
+		sampled_sex_ratio = rbinom(1, 10, sex_ratio) / 10;
+		males_in_colony = asInteger(round(sampled_sex_ratio * colony_sizes[i]));
+		females_in_colony = colony_sizes[i] - males_in_colony;
+			
+		for (male in seqLen(males_in_colony)) {
+			breaks = chr.drawBreakpoints(breeding_queens[i]);
+			if (rbinom(1, 1, 0.5)){
+				new_male = GenerateMale(breeding_queens[i], 1, breaks);
+			}
+				
+			else{
+				new_male = GenerateMale(breeding_queens[i], 2, breaks);
+			}
+			new_male.tag = 2;
+		}
+			
+		for (female in seqLen(females_in_colony)) {
+			breaks = chr.drawBreakpoints(breeding_queens[i]);
+			if (rbinom(1, 1, 0.5)){
+				new_female = GenerateFemale(breeding_queens[i], breeding_males[i], 1, breaks);
+			}
+			else{
+				new_female = GenerateFemale(breeding_queens[i], breeding_males[i], 2, breaks);
+			}
+			new_female.tag = 0;
+			colony_females = c(colony_females, new_female);
+		}	
+											
+		if (size(colony_females) >= 3) {
+    		new_queens = sample(colony_females, 3, replace = F);
+    		new_queens.tag = 1;
+		}	
+	} 
+	
+	Nf = size(breeding_queens);
+	Nm = size(unique(breeding_males));
+
+	sim.setValue("Nf", Nf);
+	sim.setValue("Nm", Nm);
+	
+		
+	self.active = 0;
+}
+
+
+1 {
+   sim.addSubpop("p1", start_population_size, sexRatio = sex_ratio);
+
+   // Initialize tags for all individuals
+   p1.individuals.tag = 0;
+   
+   // Sampleamd tag founding virgin queens from the females
+	founding_females = p1.individuals[p1.individuals.sex == "F"];
+   virgin_queens = sample(founding_females, starting_virgin_queens, replace = F);
+   virgin_queens.tag = 1;
+    catn("Generation, FixedMutations, NucleotideHeterozygosity");
+}
+
+survival()
+{
+	// non-overlapping generations, avoid fitness-based mortality
+	return (individual.age == 0);
+}
+
+1: late() {
+	if (sim.generation % 100 == 0)
+	{
+		inds = sim.subpopulations.individuals;
+		fixedCount = sim.substitutions.size();
+
+		// find the average heterozygosity across all individuals
+		total = 0.0;
+		length = sim.chromosome.lastPosition + 1;
+		for (ind in inds)
+		{
+			// calcPairHeterozygosity() doesn't like being called on haploids,
+			// since they're not "heterozygous" but rather have no zygosity;
+			// the access of the null second genome is illegal.  So, we consider
+			// males to be heterozygous for every mutation.
+			if (ind.sex == "M")
+				total = total + size(ind.genome1) / length;
+			else
+				total = total + calcPairHeterozygosity(ind.genome1, ind.genome2);
+		}
+		pi = total / inds.size();
+
+		// Retrieve breeding population sizes
+        Nf = sim.getValue("Nf");
+        Nm = sim.getValue("Nm");
+
+        // Calculate Ne
+        if (Nf == 0 & Nm == 0)
+            Ne = 0;
+        else
+            Ne = (9.0 * Nf * Nm) / (2.0 * Nf + 4.0 * Nm);
+
+        catn(sim.generation + " " + fixedCount + " " + pi + " " + Nf + " " + Nm + " " + Ne);
+	
+		
+	}
+}
+
+1000 late() {
+	sim.simulationFinished();
+}
