@@ -7,7 +7,12 @@ authors = [
     { name = "Wouter Driessen", email = "wouter.driessen@wur.nl" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "pandas-stubs~=3.1.0",
+]
 
 [project.scripts]
 haplodiploid-forward-simulation = "haplodiploid_forward_simulation:main"
