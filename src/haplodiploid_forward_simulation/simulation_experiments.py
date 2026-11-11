@@ -7,9 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MultipleLocator
 
-
-
-
 def parse_to_dict(data):
     lines = []
     line = ""
