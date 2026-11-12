@@ -13,7 +13,7 @@ Arguments:
         Number of generations to simulate.
 
 Example:
-    uv run python run_simulation.py bumble_bee_forward_simulation.slim 1000
+    uv run python simulation_experiments.py bumble_bee_forward_simulation.slim 1000
 
 Output:
     Saves a figures in the project's figures/ directory.
@@ -131,7 +131,7 @@ def main() -> None:
     #slim_executable = Path.home() / "alt_software_versions/SLiM.V3.7/SLiM/build/slim"
 
     # on server
-    slim_executable = Path.home() / software/slim3.7/bin/slim"
+    slim_executable = Path.home() / "software/slim3.7/bin/slim"
 
     data = run_simulation(slim_file, slim_executable, simulation_len, k_traj_vector, c_traj_vector)
     simulation_dict = (parse_to_dict(data))
