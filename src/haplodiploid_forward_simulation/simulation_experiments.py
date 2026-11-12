@@ -1,3 +1,25 @@
+#!/usr/bin/env python3
+"""
+Run a SLiM forward simulation and generate experimental plots.
+
+Usage:
+    uv run python simulation_experiments.py <slim_file> <simulation_length>
+
+Arguments:
+    slim_file:
+        Name of the SLiM input file located in the project's slim/ directory.
+
+    simulation_length:
+        Number of generations to simulate.
+
+Example:
+    uv run python run_simulation.py bumble_bee_forward_simulation.slim 1000
+
+Output:
+    Saves a figures in the project's figures/ directory.
+"""
+
+
 from sys import argv
 from pathlib import Path
 import subprocess
@@ -104,7 +126,12 @@ def main() -> None:
     project_root = Path(__file__).resolve().parents[2]
 
     slim_file = project_root / "slim" / file_name
-    slim_executable = Path.home() / "alt_software_versions/SLiM.V3.7/SLiM/build/slim"
+
+    # local
+    #slim_executable = Path.home() / "alt_software_versions/SLiM.V3.7/SLiM/build/slim"
+
+    # on server
+    slim_executable = Path.home() / software/slim3.7/bin/slim"
 
     data = run_simulation(slim_file, slim_executable, simulation_len, k_traj_vector, c_traj_vector)
     simulation_dict = (parse_to_dict(data))
@@ -142,7 +169,7 @@ def main() -> None:
     #ax1.legend(lines1 + lines2, labels1 + labels2)
     ax1.legend()
 
-    plt.savefig(project_root / "figures" / "K3000_C1_V1.3.png",
+    plt.savefig(project_root / "figures" / "K3000_C1_V1.4.png",
                 dpi=300, bbox_inches="tight")
 
 
