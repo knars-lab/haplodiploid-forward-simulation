@@ -1,51 +1,73 @@
 initialize() {
-	// Defaults used when script runs without parameter inputs (-d)
+	// ---- Run settings ----
 	if (!exists("simulation_length"))
 		defineConstant("simulation_length", 100);
 
+	// ---- Environmental trajectories (one value per generation) ----
 	if (!exists("K_traj"))
 		defineConstant("K_traj", rep(10000, simulation_length));
-
 	if (!exists("C_traj"))
 		defineConstant("C_traj", rep(1.0, simulation_length));
-	
-	// Model configuration	
-	initializeSLiMModelType("nonWF");
-	defineConstant("start_population_size", 3000);
-	defineConstant("starting_virgin_queens", 200);
-	initializeRecombinationRate(1e-6);
-	initializeSex("A");		
 
-	// Species specific parameters	
-	defineConstant("max_colony_size", 100);	
-	defineConstant("max_queens_per_colony", 5);
-	defineConstant("sex_ratio", 0.3);
-	defineConstant("C_intra_threshold", 0.8);
-	initializeMutationRate(1e-8);
-	
-	// Hyperparameter
-	defineConstant("queen_succes_baseline_p", 0.7);
-	defineConstant("population_size_p", 0.8);	
+	// ---- Starting population ----
+	if (!exists("start_population_size"))
+		defineConstant("start_population_size", 3000);
+	if (!exists("starting_virgin_queens"))
+		defineConstant("starting_virgin_queens", 200);
+
+	// ---- Species parameters ----
+	if (!exists("max_colony_size"))
+		defineConstant("max_colony_size", 100);
+	if (!exists("max_queens_per_colony"))
+		defineConstant("max_queens_per_colony", 5);
+	if (!exists("sex_ratio"))
+		defineConstant("sex_ratio", 0.3);
+	if (!exists("intra_specific_comp"))
+		defineConstant("intra_specific_comp", F);
+	if (!exists("C_intra_threshold"))
+		defineConstant("C_intra_threshold", 0.8);
+
+	// ---- Hyperparameters ----
+	if (!exists("p_queen_success_scaling"))
+		defineConstant("p_queen_success_scaling", 0.7);
+	if (!exists("p_population_size_scaling"))
+		defineConstant("p_population_size_scaling", 0.8);
+	if (!exists("p_colony_size_scaling"))
+		defineConstant("p_colony_size_scaling", 0.5);
+	if (!exists("p_new_queen_scaling"))
+		defineConstant("p_new_queen_scaling", 0.5);
+
+	// ---- Genetic parameters ----
+	if (!exists("mutation_rate"))
+		defineConstant("mutation_rate", 3.6e-9);
+	if (!exists("recombination_rate"))
+		defineConstant("recombination_rate", 9e-8);
+
+	// ---- Model configuration ----
+	initializeSLiMModelType("nonWF");
+	initializeSex("A");
+	initializeMutationRate(mutation_rate);
+	initializeRecombinationRate(recombination_rate);
 
 	// Initialise globals
 	defineGlobal("Nf", 0);
 	defineGlobal("Nm", 0);
 
 	// Random mutation selection coefficients
-	s_deleterious = runif(1, -0.02, -0.001);
+	//s_deleterious = runif(1, -0.02, -0.001);
 	s_neutral = 0.0;
-	s_beneficial = runif(1, 0.001, 0.04);
+	//s_beneficial = runif(1, 0.001, 0.04);
 
 	// Mutations
-	initializeMutationType("m1", 0.5, "f", s_deleterious);
-	initializeMutationType("m2", 0.5, "f", s_neutral);
-	initializeMutationType("m3", 0.5, "f", s_beneficial);
+	//initializeMutationType(".....", 0.5, "f", s_deleterious);
+	initializeMutationType("m1", 0.5, "f", s_neutral);
+	//initializeMutationType("....", 0.5, "f", s_beneficial);
 	
 	m1.convertToSubstitution = T;		// converts mutations that have become fixed into substitutions
 	m1.haploidDominanceCoeff = 1.0;	// haploid dosage coefficient
 	
-	// Genomome 
-	initializeGenomicElementType("g1", c(m1, m2, m3), c(1.0, 1.0, 1.0));
+	// Genomome
+	initializeGenomicElementType("g1", m1, 1.0);
 	initializeGenomicElement(g1, 0, 999999);
 }
 
@@ -227,12 +249,22 @@ reproduction(p1) {
 		
 	for (i in seqAlong(virgin_queens)) {
 		// p = change a queens survives and mates   ............ exceeded 1.. CHECK
-		p = min(1.0, queen_succes_baseline_p * queen_weights[i]);
+		p = min(1.0, p_queen_success_scaling  * queen_weights[i]);
 			
 		if (rbinom(1, 1, p) == 1) {
 			breeding_queens = c(breeding_queens, virgin_queens[i]);
 						
 		}
+	}
+	
+		// If no queen survived and mated, no colonies can be founded.
+	// Record this and stop; the late() callback will detect extinction.
+	if (size(breeding_queens) == 0) {
+		sim.setValue("Nf", 0);
+		sim.setValue("Nm", 0);
+		sim.setValue("colony_sizes", integer(0));
+		self.active = 0;
+		return;
 	}
 	
 	// sample breeding males, males may mate multiple times 
@@ -255,7 +287,7 @@ reproduction(p1) {
 	*/
 			
 	// sample population size from k 
-	max_population_size = rbinom(1, K , population_size_p);
+	max_population_size = rbinom(1, K , p_population_size_scaling);
 	number_of_colonies = size(breeding_queens);
 	max_colonies = K / max_colony_size;
 		
@@ -264,13 +296,13 @@ reproduction(p1) {
 		
  	//competition factor is > 1 when number of colonies exceeds competition threshold 		
 	C_intra = 1;
-	if (number_of_colonies > (C_intra_threshold * max_colonies)) {
+	if (intra_specific_comp == T & (number_of_colonies > (C_intra_threshold * max_colonies))) {
    	C_intra = number_of_colonies / (C_intra_threshold * max_colonies);
 	}
 		
 	// Sample colony sizes, which depend on competition and colony fitness 
 	for (i in seqAlong(colony_fit)) {  
-		p = min(1.0, (0.5 * colony_fit[i]*(1/C_intra)*(1/C_inter)));				
+		p = min(1.0, (p_colony_size_scaling * colony_fit[i]*(1/C_intra)*(1/C_inter)));				
 		curr_colony_size = rbinom(1, max_colony_size, p);
 		colony_sizes = c(colony_sizes, curr_colony_size);
 	}
@@ -280,9 +312,18 @@ reproduction(p1) {
 		while (sum(colony_sizes) > max_population_size) {
 			down_sampled_index = sample(seqAlong(breeding_queens), 1, weights = 1.0 / colony_fit);
 			breeding_queens = breeding_queens[seqAlong(breeding_queens) != down_sampled_index];
+			breeding_males = breeding_males[seqAlong(breeding_males) != down_sampled_index];			
 			colony_sizes = colony_sizes[seqAlong(colony_sizes) != down_sampled_index];
 			colony_fit = colony_fit[seqAlong(colony_fit) != down_sampled_index];	
 		}
+	}
+	// Down-sampling may have removed every colony
+	if (size(breeding_queens) == 0) {
+		sim.setValue("Nf", 0);
+		sim.setValue("Nm", 0);
+		sim.setValue("colony_sizes", integer(0));
+		self.active = 0;
+		return;
 	}
 		
 	// ----------------------------------------------------------------------------
@@ -319,33 +360,23 @@ reproduction(p1) {
 			new_female.tag = 0;
 			colony_females = c(colony_females, new_female);
 		}	
-											
-		if (size(colony_females) < 10) {
-    	// Small colonies: no queens
-		}
-		else if (size(colony_females) < 30) {
-    	// Small-medium colonies: 1 queen
-    		new_queens = sample(colony_females, 3, replace = F);
-    		new_queens.tag = 1;
-		}
-		else if (size(colony_females) < 60) {
-    	// Medium colonies: 2 queens
-    		new_queens = sample(colony_females, 4, replace = F);
-    		new_queens.tag = 1;
-		}
-		else {
-    	// Large colonies: 3 queens
-    		new_queens = sample(colony_females, 5, replace = F);
-    		new_queens.tag = 1;
-}
+		
+		p_queen = p_new_queen_scaling * (colony_sizes[i] / max_colony_size);
+		new_queen_count = rbinom(1, max_queens_per_colony, p_queen);
+		new_queen_count = min(new_queen_count, size(colony_females));
 
+		if (new_queen_count > 0) {
+   		new_queens = sample(colony_females, new_queen_count, replace = F);
+    		new_queens.tag = 1;
+}		
 	} 
 	
 	Nf = size(breeding_queens);
 	Nm = size(unique(breeding_males));
-
+	
 	sim.setValue("Nf", Nf);
 	sim.setValue("Nm", Nm);
+	sim.setValue("colony_sizes", colony_sizes);
 	
 		
 	self.active = 0;
@@ -363,7 +394,7 @@ reproduction(p1) {
 	founding_females = p1.individuals[p1.individuals.sex == "F"];
    virgin_queens = sample(founding_females, starting_virgin_queens, replace = F);
    virgin_queens.tag = 1;
-   catn("Generation FixedMutations NucleotideHeterozygosity Nf Nm Ne N");
+   catn("Generation FixedMutations NucleotideHeterozygosity Nf Nm Ne N colony_size");
 }
 
 survival()
@@ -373,11 +404,27 @@ survival()
 }
 
 1: late() {
+	// Retrieve current generation information 
+	inds = sim.subpopulations.individuals;	
+	Nf = sim.getValue("Nf");
+   Nm = sim.getValue("Nm");
+   colony_sizes = sim.getValue("colony_sizes"); 
+   virgin_queens = sum(inds.tag == 1);
+   new_males = sum(inds.sex == "M");
+   fixedCount = sim.substitutions.size();
+   
+   N = inds.size();
+   
 	if (sim.generation >= simulation_length)
 		sim.simulationFinished();	
-	inds = sim.subpopulations.individuals;
-	fixedCount = sim.substitutions.size();
-
+	
+	if (sim.generation > 1 & 
+		(Nf == 0 | Nm == 0 | new_males == 0 | virgin_queens == 0)) {
+		catn("extinction at generation  " + sim.generation);
+		sim.simulationFinished();
+		return;
+		}
+	
 		// find the average heterozygosity across all individuals
 	total = 0.0;
 	length = sim.chromosome.lastPosition + 1;
@@ -393,20 +440,16 @@ survival()
 	}
 	pi = total / inds.size();
 
-	// Retrieve breeding population sizes
-	Nf = sim.getValue("Nf");
-   Nm = sim.getValue("Nm");
-   N = inds.size();
-
-
    // Calculate Ne
    if (Nf == 0 & Nm == 0)
 		Ne = 0;
    else
-		Ne = (9.0 * Nf * Nm) / (2.0 * Nf + 4.0 * Nm);
-		catn(sim.generation + " " + fixedCount + " " + pi + " " + Nf + " " + Nm + " " + Ne + " " + N);		
+		Ne = Nf + Nm;
+	
+	catn(sim.generation + " " + fixedCount + " " + pi + " " + Nf + " " + Nm + " " + Ne + " " + N + " [" + paste(colony_sizes, sep=",") + "]");		
 }
 
+// upper limit of 20000 
 20000 late() {
 	sim.simulationFinished();
 }

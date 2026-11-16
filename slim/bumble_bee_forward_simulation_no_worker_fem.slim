@@ -1,0 +1,465 @@
+initialize() {
+	// ---- Run settings ----
+	if (!exists("simulation_length"))
+		defineConstant("simulation_length", 100);
+
+	// ---- Environmental trajectories (one value per generation) ----
+	if (!exists("K_traj"))
+		defineConstant("K_traj", rep(10000, simulation_length));
+	if (!exists("C_traj"))
+		defineConstant("C_traj", rep(1.0, simulation_length));
+
+	// ---- Starting population ----
+	if (!exists("start_population_size"))
+		defineConstant("start_population_size", 3000);
+	if (!exists("starting_virgin_queens"))
+		defineConstant("starting_virgin_queens", 200);
+
+	// ---- Species parameters ----
+	if (!exists("max_colony_size"))
+		defineConstant("max_colony_size", 200);
+	if (!exists("max_queens_per_colony"))
+		defineConstant("max_queens_per_colony", 100);
+	if (!exists("sex_ratio"))
+		defineConstant("sex_ratio", 0.3);
+	if (!exists("intra_specific_comp"))
+		defineConstant("intra_specific_comp", F);
+	if (!exists("C_intra_threshold"))
+		defineConstant("C_intra_threshold", 0.8);
+
+	// ---- Hyperparameters ----
+	if (!exists("p_queen_success_scaling"))
+		defineConstant("p_queen_success_scaling", 0.7);
+	if (!exists("p_population_size_scaling"))
+		defineConstant("p_population_size_scaling", 0.8);
+	if (!exists("p_colony_size_scaling"))
+		defineConstant("p_colony_size_scaling", 0.5);
+	if (!exists("p_new_queen_scaling"))
+		defineConstant("p_new_queen_scaling", 0.5);
+
+	// ---- Genetic parameters ----
+	if (!exists("mutation_rate"))
+		defineConstant("mutation_rate", 3.6e-9);
+	if (!exists("recombination_rate"))
+		defineConstant("recombination_rate", 9e-8);
+
+	// ---- Model configuration ----
+	initializeSLiMModelType("nonWF");
+	initializeSex("A");
+	initializeMutationRate(mutation_rate);
+	initializeRecombinationRate(recombination_rate);
+
+	// Initialise globals
+	defineGlobal("Nf", 0);
+	defineGlobal("Nm", 0);
+
+	// Random mutation selection coefficients
+	//s_deleterious = runif(1, -0.02, -0.001);
+	s_neutral = 0.0;
+	//s_beneficial = runif(1, 0.001, 0.04);
+
+	// Mutations
+	//initializeMutationType(".....", 0.5, "f", s_deleterious);
+	initializeMutationType("m1", 0.5, "f", s_neutral);
+	//initializeMutationType("....", 0.5, "f", s_beneficial);
+	
+	m1.convertToSubstitution = T;		// converts mutations that have become fixed into substitutions
+	m1.haploidDominanceCoeff = 1.0;	// haploid dosage coefficient
+	
+	// Genomome
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, 9999999);
+}
+
+// function definitions
+
+/*
+Generates a haploid male offspring from a diploid queen
+	Arguments:
+   	queen (object<Individual>): Diploid queen individual
+ 		strand: Determines which parental genome is used as the starting
+            	strand (1 = genome1, 2 = genome2)
+   	breaks: Recombination breakpoints form the queens genome
+   Returns: 
+   	new_male (object<Individual>): haploid male 
+*/
+function (object<Individual>) GenerateMale(
+											object<Individual> queen,  
+											integer strand, 
+											integer breaks){
+												
+	if (strand == 1){
+		new_male = subpop.addRecombinant(
+       				strand1 = queen.genome1,
+        				strand2 = queen.genome2,
+        				breaks1 = breaks,
+        				strand3 = NULL,
+        				strand4 = NULL,
+        				breaks2 = NULL,
+        				sex = "M");
+    }
+    else{
+		new_male = subpop.addRecombinant(
+						strand1 = queen.genome2,
+						strand2 = queen.genome1,
+						breaks1 = breaks,
+						strand3 = NULL,
+						strand4 = NULL,
+						breaks2 = NULL,
+						sex = "M");				}
+    return new_male;
+}
+
+/*
+Generates diploid female offspring from a diploid queen and haploid male 
+	Arguments:
+   	queen (object<Individual>): Diploid queen individual
+   	male (object<Individual>): haploid male individual
+ 		strand : Determines which parental genome is used as the starting
+            	strand (1 = genome1, 2 = genome2)
+   	breaks : Recombination breakpoints form the queens genome
+   Returns: 
+   	new_female (object<Individual>): haploid female
+*/
+
+function (object<Individual>) GenerateFemale(
+											object<Individual> queen,
+											object<Individual> male, 
+											integer strand, 
+											integer breaks) {
+	
+	if (strand == 1){
+   	new_female = subpop.addRecombinant(
+   						strand1 = queen.genome1,
+							strand2 = queen.genome2,
+							breaks1 = breaks,
+							strand3 = male.genome1,
+							strand4 = NULL,
+							breaks2 = NULL,
+							sex = "F");
+    }
+    else{
+		new_female = subpop.addRecombinant(
+							strand1 = queen.genome2,
+							strand2 = queen.genome1,
+							breaks1 = breaks,
+							strand3 = male.genome1,
+							strand4 = NULL,
+							breaks2 = NULL,
+							sex = "F");
+				}
+    return new_female;
+}    
+
+/*
+Calculates colony fitness based on the fitness of the breeding queen and male.
+
+    Arguments:
+        breeding_queens (object<Individual>): Vector with breeding queens
+        breeding_males (object<Individual>): Vector with breeding males
+        fit (float): Fitness values of all individuals in the subpopulation
+        inds (object<Individual>): All individuals in the current subpopulation
+    Returns:
+        colony_fit (float): Vector containing the combined fitness of each
+                            breeding queen-male pair
+*/
+
+
+function (float) getColonyFit(
+					     object<Individual> breeding_queens,
+    					  object<Individual> breeding_males,
+    					  float fit,
+    					  object<Individual> inds) {
+    return fit[breeding_queens.index] * fit[breeding_males.index];
+}
+
+/*
+Samples colony sizes from a binomial distribution with a probability proportional to the
+colony fitness (capped at 1) and trials equal to the maximum colony size
+        
+    Arguments:
+        colony_fit (float): Vector containing the fitness of each colony
+    Returns:
+        colony_sizes (integer): Vector containing the size of each
+                                colony
+*/
+
+function (integer) sampleColonySizes(float colony_fit)
+{
+    colony_sizes = integer(size(colony_fit));
+
+    for (i in seqAlong(colony_fit)) {
+
+        p = min(1.0, 0.5 * colony_fit[i]);
+
+        colony_sizes[i] = rbinom(1, max_colony_size, p);
+    }
+    return colony_sizes;
+}
+
+first() {
+// Assigns the current K and C_inter from trajectory vectors  
+  	defineGlobal("K", asInteger(K_traj[sim.generation - 1]));
+  	defineGlobal("C_inter", C_traj[sim.generation - 1]);
+  }
+
+reproduction(p1) {
+// generate offspring in subpop, in one "big bang"
+	
+	// initilise vectors 
+	breeding_queens = NULL;
+	colony_fit = NULL;
+	colony_sizes = NULL;
+	sampled_sex_ratio = 0.0;	
+	
+	// retrieve individuals of current subpopulation 
+	inds = subpop.individuals;
+	// create logical vector with true false labels 
+	is_female = (inds.sex == "F") ;
+	is_male = !is_female;
+	// retrieves the male or female individuals 
+	females = inds[is_female];
+	males = inds[is_male];
+
+	
+	chr = sim.chromosome;
+	// Get fitness values for all individuals
+	fit = subpop.cachedFitness(NULL);
+	fem_weights = fit[is_female];
+	male_weights = fit[is_male];
+	
+	// ----------------------------------------------------------------------------
+	// 1. Determine the colony founding queens and the mating males.  
+	// ----------------------------------------------------------------------------
+		
+	// Select virgin queens
+	virgin_queens = inds[inds.tag == 1];
+
+	// Extract fitness values of virgin queens
+	queen_weights = fit[inds.tag == 1];
+		
+	// sample breeding queens
+	// samples the colony founding queens that survide and mate 	
+	
+	// breeding queens
+	p_vec = pmin(1.0, p_queen_success_scaling * queen_weights);
+	breeding_queens = virgin_queens[runif(size(virgin_queens)) < p_vec];
+		
+//	for (i in seqAlong(virgin_queens)) {
+//		// p = change a queens survives and mates
+//		p = min(1.0, p_queen_success_scaling  * queen_weights[i]);
+//			
+//		if (rbinom(1, 1, p) == 1) {
+//			breeding_queens = c(breeding_queens, virgin_queens[i]);
+//						
+//		}
+//	}
+	
+		// If no queen survived and mated, no colonies can be founded.
+	// Record this and stop; the late() callback will detect extinction.
+	if (size(breeding_queens) == 0) {
+		sim.setValue("Nf", 0);
+		sim.setValue("Nm", 0);
+		sim.setValue("colony_sizes", integer(0));
+		self.active = 0;
+		return;
+	}
+	
+	// sample breeding males, males may mate multiple times 
+//	breeding_males = NULL;	
+//	while (size(breeding_males) < size(breeding_queens)) {
+//		breeding_male = sample(males, 1 , replace = T, weights = male_weights);		
+//		breeding_males = c(breeding_males, breeding_male);
+//	} 
+
+	breeding_males = sample(males, size(breeding_queens), replace = T, weights = male_weights);
+		
+	// ----------------------------------------------------------------------------
+	// 2. Determine colony sizes 
+	// ---------------------------------------------------------------------------- 
+	/*
+	Determine the size of each colony, which is limited by competition.
+	When total population size exceeds maximum population size populations
+	are down sampled depending on the colony fitness. 
+		
+	Competition is determined BEFORE down sampling, as colonies may still 
+	experience competition from non surviving colonies. 
+	*/
+			
+	// sample population size from k 
+	max_population_size = rbinom(1, K , p_population_size_scaling);
+	number_of_colonies = size(breeding_queens);
+	max_colonies = K / max_colony_size;
+		
+	//calculate colony fitness 
+	colony_fit = getColonyFit(breeding_queens, breeding_males, fit, inds);
+		
+ 	//competition factor is > 1 when number of colonies exceeds competition threshold 		
+	C_intra = 1;
+	if (intra_specific_comp == T & (number_of_colonies > (C_intra_threshold * max_colonies))) {
+   	C_intra = number_of_colonies / (C_intra_threshold * max_colonies);
+	}
+		
+	// Sample colony sizes, which depend on competition and colony fitness 
+	for (i in seqAlong(colony_fit)) {  
+		p = min(1.0, (p_colony_size_scaling * colony_fit[i]*(1/C_intra)*(1/C_inter)));				
+		curr_colony_size = rbinom(1, max_colony_size, p);
+		colony_sizes = c(colony_sizes, curr_colony_size);
+	}
+		
+	// Down sample colonies when total population exceeds the maximum population size.
+	if (sum(colony_sizes) > max_population_size) {
+		while (sum(colony_sizes) > max_population_size) {
+			down_sampled_index = sample(seqAlong(breeding_queens), 1, weights = 1.0 / colony_fit);
+			breeding_queens = breeding_queens[seqAlong(breeding_queens) != down_sampled_index];
+			breeding_males = breeding_males[seqAlong(breeding_males) != down_sampled_index];			
+			colony_sizes = colony_sizes[seqAlong(colony_sizes) != down_sampled_index];
+			colony_fit = colony_fit[seqAlong(colony_fit) != down_sampled_index];	
+		}
+	}
+	// Down-sampling may have removed every colony
+	if (size(breeding_queens) == 0) {
+		sim.setValue("Nf", 0);
+		sim.setValue("Nm", 0);
+		sim.setValue("colony_sizes", integer(0));
+		self.active = 0;
+		return;
+	}
+		
+	// ----------------------------------------------------------------------------
+	// 3. Per colony male and female generation 
+	// ----------------------------------------------------------------------------
+	queens_per_colony = integer(0);
+		
+	last_gen = (sim.generation >= simulation_length);
+	
+	for (i in seqAlong(breeding_queens)) {
+		
+		// sex distribution
+		sampled_sex_ratio = rbinom(1, 10, sex_ratio) / 10; 
+		males_in_colony = asInteger(round(sampled_sex_ratio * colony_sizes[i]));
+		females_in_colony = colony_sizes[i] - males_in_colony;
+		
+		// males 	
+		for (male in seqLen(males_in_colony)) {
+			breaks = chr.drawBreakpoints(breeding_queens[i]);
+			if (rbinom(1, 1, 0.5)){
+				new_male = GenerateMale(breeding_queens[i], 1, breaks);
+			}
+				
+			else{
+				new_male = GenerateMale(breeding_queens[i], 2, breaks);
+			}
+			new_male.tag = 2;
+		}
+		
+		//females
+		p_queen = p_new_queen_scaling * (colony_sizes[i] / max_colony_size);
+		new_queen_count = rbinom(1, max_queens_per_colony, p_queen);
+		
+		new_queen_count = min(new_queen_count, females_in_colony);
+		queens_per_colony = c(queens_per_colony, new_queen_count);
+		
+		// last generation: all females otherwise only the queens
+		if (last_gen)
+			n_females = females_in_colony;
+		else
+			n_females = new_queen_count;
+
+		for (f in seqLen(n_females)) {
+			breaks = chr.drawBreakpoints(breeding_queens[i]);
+			if (rbinom(1, 1, 0.5))
+				new_female = GenerateFemale(breeding_queens[i], breeding_males[i], 1, breaks);
+			else
+				new_female = GenerateFemale(breeding_queens[i], breeding_males[i], 2, breaks);
+		
+		// first new_queen_count daughters are queens, the rest are workers
+		if (f < new_queen_count)
+			new_female.tag = 1;
+		else
+			new_female.tag = 0;
+		}
+ 	}		
+	Nf = size(breeding_queens);
+	Nm = size(unique(breeding_males));
+	
+	breeding_queen_count = size(breeding_queens);
+	sim.setValue("new_queens", queens_per_colony);
+	sim.setValue("Nf", Nf);
+	sim.setValue("Nm", Nm);
+	sim.setValue("colony_sizes", colony_sizes);
+	
+
+	queen_genomes = c(breeding_queens.genome1, breeding_queens.genome2);
+	sim.setValue("exp_het_queens", calcHeterozygosity(queen_genomes));
+	self.active = 0;
+}
+
+1 {
+   sim.addSubpop("p1", start_population_size, sexRatio = sex_ratio);
+	// initialse Nf and Nm	
+	sim.setValue("Nf", 0);
+	sim.setValue("Nm", 0);
+   // Initialize tags for all individuals
+   p1.individuals.tag = 0;
+   sim.setValue("exp_het_queens", 0.0);
+   
+   sim.setValue("new_queens", 0);
+   sim.setValue("colony_sizes", 0);
+   
+   // Sampleamd tag founding virgin queens from the females
+	founding_females = p1.individuals[p1.individuals.sex == "F"];
+   virgin_queens = sample(founding_females, starting_virgin_queens, replace = F);
+   virgin_queens.tag = 1;
+   catn("Generation FixedMutations expected_heterozygosity_colony_founding_queens Nf Nm Ne N colony_size new_queens");
+}
+
+survival()
+{
+	// non-overlapping generations, avoid fitness-based mortality
+	return (individual.age == 0);
+}
+
+1: late() {
+	// Retrieve current generation information 
+	inds = sim.subpopulations.individuals;	
+	Nf = sim.getValue("Nf");
+   Nm = sim.getValue("Nm");
+   new_queens = sim.getValue("new_queens");
+	expected_heterozygosity_colony_founding_queens = sim.getValue("exp_het_queens");
+   colony_sizes = sim.getValue("colony_sizes"); 
+   virgin_queens = sum(inds.tag == 1);
+   new_males = sum(inds.sex == "M");
+   fixedCount = sim.substitutions.size();
+   
+	if (sim.generation == 1)
+		N = size(inds);
+	else
+		N = sum(colony_sizes);
+   
+	if (sim.generation >= simulation_length)
+		sim.simulationFinished();	
+	
+	if (sim.generation > 1 & 
+		(Nf == 0 | Nm == 0 | new_males == 0 | virgin_queens == 0)) {
+		catn("extinction at generation  " + sim.generation);
+		sim.simulationFinished();
+		return;
+		}
+	
+	
+   // Calculate Ne
+   if (Nf == 0 & Nm == 0)
+		Ne = 0;
+   else
+		Ne = Nf + Nm;
+	
+	catn(sim.generation + " " + fixedCount + " " + expected_heterozygosity_colony_founding_queens +  " " + Nf + " " + Nm + " " + Ne + " " + N + " [" + paste(colony_sizes, sep=",") + "]" + " [" + paste(new_queens, sep=",") + "]");		
+}
+
+// upper limit of 20000 
+20000 late() {
+	sim.simulationFinished();
+}
+
+
