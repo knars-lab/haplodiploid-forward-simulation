@@ -347,7 +347,7 @@ def main() -> None:
         "p_queen_success_scaling": [0.4, 0.8],
     })
 
-    run_experiments("TESTV3", project_root, slim_file, slim_executable, grid, defaults,
+    run_experiments("Hyperparam_tuningV1", project_root, slim_file, slim_executable, grid, defaults,
                     simulation_len, carrying_capacity = 10000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
