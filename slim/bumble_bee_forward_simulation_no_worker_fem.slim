@@ -41,7 +41,7 @@ initialize() {
 	if (!exists("mutation_rate"))
 		defineConstant("mutation_rate", 3.6e-9);
 	if (!exists("recombination_rate"))
-		defineConstant("recombination_rate", 9e-8);
+		defineConstant("recombination_rate", 8.73e-8);
 
 	// ---- Model configuration ----
 	initializeSLiMModelType("nonWF");
@@ -68,7 +68,7 @@ initialize() {
 	
 	// Genomome
 	initializeGenomicElementType("g1", m1, 1.0);
-	initializeGenomicElement(g1, 0, 9999999);
+	initializeGenomicElement(g1, 0, 19739999);
 }
 
 // function definitions

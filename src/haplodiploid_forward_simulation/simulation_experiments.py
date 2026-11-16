@@ -211,7 +211,7 @@ def colony_size_distribution_fig(df, project_root, fig_name):
         np.array(mean_colony_size) + np.array(sd_colony_size),
         color="red",
         alpha=0.2,
-        label="± SD"
+        label="± sd"
     )
 
     ax1.fill_between(
@@ -234,9 +234,6 @@ def colony_size_distribution_fig(df, project_root, fig_name):
 
     plt.savefig(project_root / "figures" / fig_name,
                 dpi=300, bbox_inches="tight")
-
-
-
 
 
 def get_traj_no_burn_in(simulation_len, carrying_capacity, inter_comp = 1):
@@ -290,7 +287,7 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
             for i, param_set in enumerate(grid):
                 params = {**defaults, **param_set}
                 run_name = f"{exp_name}_{i+1}"
-                file.write(f"{run_name} | {params}\n")
+                file.write(f"{run_name} : {params}\n")
                 k_traj, c_traj = get_traj_no_burn_in(simulation_len,
                                                      carrying_capacity)
                 data = run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj, **params)
@@ -301,8 +298,8 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
                 ## add K and C trajector
                 df["K"] = k_traj[:len(df)]
                 df["C"] = c_traj[:len(df)]
-                colony_size_distribution_fig(df, project_root, f"colony_size_distribution_{run_name}")
-                pop_size_fig(df, project_root, f"population_size_{run_name}")
+                colony_size_distribution_fig(df, project_root, f"{run_name}_colony_size_distribution")
+                pop_size_fig(df, project_root, f"{run_name}_population_size")
                 print(f"param_set {i+1} out of {paramset_count}")
 
 
@@ -331,7 +328,7 @@ def main() -> None:
 
     defaults = {
         "start_population_size": 5000,
-        "starting_virgin_queens": 100,
+        "starting_virgin_queens": 300,
         "max_queens_per_colony": 200,
         "max_colony_size": 400,
         "sex_ratio": 0.3,
@@ -346,12 +343,12 @@ def main() -> None:
     }
 
     grid = ParameterGrid({
-        "max_colony_size": [100, 200, 400],
-        "sex_ratio": [0.2, 0.3],
+        "c_intra_threshold": [0.2, 0.5, 0.8],
+        "p_queen_success_scaling": [0.4, 0.8],
     })
 
     run_experiments("TESTV3", project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 5000, burn_in=False)
+                    simulation_len, carrying_capacity = 10000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     print(f"Peak RAM of SLiM: {usage.ru_maxrss / 1024:.0f} MB")
