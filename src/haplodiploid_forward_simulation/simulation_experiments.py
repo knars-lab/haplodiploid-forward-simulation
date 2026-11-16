@@ -343,12 +343,11 @@ def main() -> None:
     }
 
     grid = ParameterGrid({
-        "c_intra_threshold": [0.2, 0.5, 0.8],
-        "p_queen_success_scaling": [0.4, 0.8],
+        "max_colony_size": [100, 200, 300, 400],
     })
 
-    run_experiments("Hyperparam_tuningV1", project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 10000, burn_in=False)
+    run_experiments("max_colony_size_expV1", project_root, slim_file, slim_executable, grid, defaults,
+                    simulation_len, carrying_capacity = 15000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     print(f"Peak RAM of SLiM: {usage.ru_maxrss / 1024:.0f} MB")
