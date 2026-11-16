@@ -331,7 +331,7 @@ def main() -> None:
         "starting_virgin_queens": 300,
         "max_queens_per_colony": 200,
         "max_colony_size": 400,
-        "sex_ratio": 0.3,
+        "sex_ratio": 0.1,
         "intra_specific_comp": "F",
         "p_colony_size_scaling": 0.8,
         "c_intra_threshold": 0.8,
@@ -343,11 +343,12 @@ def main() -> None:
     }
 
     grid = ParameterGrid({
-        "max_colony_size": [100, 200, 300, 400],
+        "sex_ratio": [0.05, 0.1],
+        "max_colony_size": [100, 200, 300],
     })
 
     run_experiments("max_colony_size_expV1", project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 15000, burn_in=False)
+                    simulation_len, carrying_capacity = 10000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     print(f"Peak RAM of SLiM: {usage.ru_maxrss / 1024:.0f} MB")
