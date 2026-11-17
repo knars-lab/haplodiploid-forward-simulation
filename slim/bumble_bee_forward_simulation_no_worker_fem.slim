@@ -265,6 +265,12 @@ reproduction(p1) {
 		return;
 	}
 	
+	surviving_per_colony = integer(0);
+	if (sim.generation > 1) {
+	n_prev_colonies = size(sim.getValue("colony_sizes"));
+	surviving_per_colony = tabulate(asInteger(breeding_queens.tagF), 			n_prev_colonies - 1);
+}	
+	
 	// sample breeding males, males may mate multiple times 
 //	breeding_males = NULL;	
 //	while (size(breeding_males) < size(breeding_queens)) {
@@ -374,8 +380,10 @@ reproduction(p1) {
 				new_female = GenerateFemale(breeding_queens[i], breeding_males[i], 2, breaks);
 		
 		// first new_queen_count daughters are queens, the rest are workers
-		if (f < new_queen_count)
+		if (f < new_queen_count){
 			new_female.tag = 1;
+			new_female.tagF = asFloat(i);
+		}
 		else
 			new_female.tag = 0;
 		}
@@ -384,7 +392,7 @@ reproduction(p1) {
 	Nm = size(unique(breeding_males));
 	
 	breeding_queen_count = size(breeding_queens);
-	sim.setValue("new_queens", queens_per_colony);
+	sim.setValue("new_queens", surviving_per_colony);
 	sim.setValue("Nf", Nf);
 	sim.setValue("Nm", Nm);
 	sim.setValue("colony_sizes", colony_sizes);
@@ -402,6 +410,7 @@ reproduction(p1) {
 	sim.setValue("Nm", 0);
    // Initialize tags for all individuals
    p1.individuals.tag = 0;
+ 	p1.individuals.tagF = -1;
    sim.setValue("exp_het_queens", 0.0);
    
    sim.setValue("new_queens", 0);

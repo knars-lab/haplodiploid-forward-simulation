@@ -147,7 +147,7 @@ def pop_size_fig(df, project_root, fig_name, exp_name):
     # Right axis
     ax2 = ax1.twinx()
     ax2.plot(df["generation"], df["expected_heterozygosity"],
-             color="purple", label="Expected heterozygosity")
+             color="orange", label="Expected heterozygosity")
     ax2.set_ylabel("Expected heterozygosity")
 
     # Combined legend
@@ -158,8 +158,12 @@ def pop_size_fig(df, project_root, fig_name, exp_name):
     bbox_to_anchor=(1.12, 0.5))
 
 
+
     plt.savefig(project_root / "figures" / exp_name /fig_name,
                 dpi=300, bbox_inches="tight")
+
+
+
 
 def expected_heterozygosity_fig(df, project_root, fig_name, exp_name):
     fig, ax1 = plt.subplots()
@@ -293,7 +297,7 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
 
                 params = {**defaults, **param_set}
                 run_name = f"{exp_name}_{i+1}"
-                file.write(f"{run_name} : {params}\n")
+                file.write(f"{run_name} : {carrying_capacity} | {params}\n")
 
                 start = time.perf_counter()
 
@@ -344,7 +348,7 @@ def main() -> None:
         "starting_virgin_queens": 300,
         "max_queens_per_colony": 200,
         "max_colony_size": 400,
-        "sex_ratio": 0.1,
+        "sex_ratio": 0.3,
         "intra_specific_comp": "F",
         "p_colony_size_scaling": 0.8,
         "c_intra_threshold": 0.8,
@@ -356,12 +360,13 @@ def main() -> None:
     }
 
     grid = ParameterGrid({
-        "p_colony_size_scaling": [0.4, 0.6, 0.8],
-        "max_colony_size": [100, 200, 300],
+        # "intra_specific_comp": ["F", "T"],
+        "p_colony_size_scaling": [0.8],
+        "max_colony_size": [200],
     })
 
     run_experiments(argv[4], project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 15000, burn_in=False)
+                    simulation_len, carrying_capacity = 30000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     print(f"Peak RAM of SLiM: {usage.ru_maxrss / 1024:.0f} MB")
