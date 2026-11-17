@@ -360,7 +360,7 @@ def main() -> None:
         "max_colony_size": [100, 200, 300],
     })
 
-    run_experiments("TEST", project_root, slim_file, slim_executable, grid, defaults,
+    run_experiments(argv[3], project_root, slim_file, slim_executable, grid, defaults,
                     simulation_len, carrying_capacity = 10000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
