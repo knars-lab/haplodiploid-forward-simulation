@@ -26,7 +26,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import resource
+import time
 from sklearn.model_selection import ParameterGrid
+
 
 def parse_to_dict(data):
     lines = []
@@ -129,7 +131,7 @@ def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
     return output.stdout
 
 
-def pop_size_fig(df, project_root, fig_name):
+def pop_size_fig(df, project_root, fig_name, exp_name):
     fig, ax1 = plt.subplots()
 
     # Left axis
@@ -156,10 +158,10 @@ def pop_size_fig(df, project_root, fig_name):
     bbox_to_anchor=(1.12, 0.5))
 
 
-    plt.savefig(project_root / "figures" / fig_name,
+    plt.savefig(project_root / "figures" / exp_name /fig_name,
                 dpi=300, bbox_inches="tight")
 
-def expected_heterozygosity_fig(df, project_root, fig_name):
+def expected_heterozygosity_fig(df, project_root, fig_name, exp_name):
     fig, ax1 = plt.subplots()
 
     # Left axis
@@ -174,11 +176,11 @@ def expected_heterozygosity_fig(df, project_root, fig_name):
     ax1.legend(lines1 , labels1, loc="center left",
     bbox_to_anchor=(1.12, 0.5))
 
-    plt.savefig(project_root / "figures" / fig_name,
+    plt.savefig(project_root / "figures" / exp_name / fig_name,
                 dpi=300, bbox_inches="tight")
 
 
-def colony_size_distribution_fig(df, project_root, fig_name):
+def colony_size_distribution_fig(df, project_root, fig_name, exp_name):
 
     colony_sizes = df["cs"]
 
@@ -232,7 +234,7 @@ def colony_size_distribution_fig(df, project_root, fig_name):
     ax1.legend(lines1, labels1, loc="center left",
                bbox_to_anchor=(1.12, 0.5))
 
-    plt.savefig(project_root / "figures" / fig_name,
+    plt.savefig(project_root / "figures" / exp_name / fig_name,
                 dpi=300, bbox_inches="tight")
 
 
@@ -278,28 +280,39 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
 
     paramset_count = len(grid)
 
-    with open(project_root / "meta_data" / f"{exp_name}_meta_data", "w") as file:
+    experiment_dir = project_root / "figures" / exp_name
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(experiment_dir / f"{exp_name}_meta_data", "w") as file:
         file.write(f"Meta data {exp_name}\n")
 
         if burn_in:
             print("burn_in true")
         else:
             for i, param_set in enumerate(grid):
+
                 params = {**defaults, **param_set}
                 run_name = f"{exp_name}_{i+1}"
                 file.write(f"{run_name} : {params}\n")
+
+                start = time.perf_counter()
+
                 k_traj, c_traj = get_traj_no_burn_in(simulation_len,
                                                      carrying_capacity)
                 data = run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj, **params)
 
+                stop =  time.perf_counter()
+                duration = stop - start
+                minutes, seconds = divmod(duration, 60)
+                file.write(f"{run_name} : run time: {int(minutes)} min {seconds:.2f} sec\n")
                 simulation_dict = (parse_to_dict(data))
 
                 df = pd.DataFrame.from_dict(simulation_dict)
                 ## add K and C trajector
                 df["K"] = k_traj[:len(df)]
                 df["C"] = c_traj[:len(df)]
-                colony_size_distribution_fig(df, project_root, f"{run_name}_colony_size_distribution")
-                pop_size_fig(df, project_root, f"{run_name}_population_size")
+                colony_size_distribution_fig(df, project_root, f"{run_name}_colony_size_distribution", exp_name)
+                pop_size_fig(df, project_root, f"{run_name}_population_size", exp_name)
                 print(f"param_set {i+1} out of {paramset_count}")
 
 
@@ -347,7 +360,7 @@ def main() -> None:
         "max_colony_size": [100, 200, 300],
     })
 
-    run_experiments("max_colony_size_expV1", project_root, slim_file, slim_executable, grid, defaults,
+    run_experiments("TEST", project_root, slim_file, slim_executable, grid, defaults,
                     simulation_len, carrying_capacity = 10000, burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
