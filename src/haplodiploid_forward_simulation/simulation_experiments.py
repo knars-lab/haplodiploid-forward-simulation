@@ -77,11 +77,9 @@ def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
 
 
 
-
-
-
-def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
+def run_experiments(exp_name, project_root, slim_file, slim_executable, grid,
                     defaults, simulation_len, carrying_capacity,
+                    burn_in_time, k_bottlenecks, k_bottleneck_min,
                     burn_in = False):
 
     paramset_count = len(grid)
@@ -103,11 +101,18 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
 
                 start = time.perf_counter()
 
-                k_traj, c_traj = get_traj_no_burn_in(simulation_len,
-                                                     carrying_capacity)
+                #k_traj, c_traj = get_traj_no_burn_in(simulation_len,
+                 #                                    carrying_capacity)
 
+                k_vec, c_vec, k_arr, c_arr = get_traj(
+                    simulation_len=simulation_len,
+                    burn_in_time=burn_in_time,
+                    burn_in_k=carrying_capacity,
+                    k_bottlenecks=k_bottlenecks,
+                    k_bottleneck_min=k_bottleneck_min)
 
-                data = run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj, **params)
+                data = run_simulation(slim_file, slim_executable,
+                                      simulation_len, k_vec, c_vec, **params)
 
                 stop =  time.perf_counter()
                 duration = stop - start
@@ -117,8 +122,8 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
 
                 df = pd.DataFrame.from_dict(simulation_dict)
                 ## add K and C trajector
-                df["K"] = k_traj[:len(df)]
-                df["C"] = c_traj[:len(df)]
+                df["K"] = k_arr[:len(df)]
+                df["C"] = c_arr[:len(df)]
 
                 # skip the first generation
                 df = df[df["generation"] > 30].reset_index(drop=True)
@@ -132,6 +137,10 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
                 expected_heterozygosity_fig(df, project_root,
                                             f"{run_name}_heterozygosity",
                                             exp_name)
+                k_colonies_heterozygosity_fig(
+                    df, project_root, f"{run_name}_k_colonies_heterozygosity",
+                    exp_name
+                )
                 print(f"param_set {i+1} out of {paramset_count}")
 
 
@@ -179,13 +188,15 @@ def main() -> None:
     }
 
     grid = ParameterGrid({
-        "p_colony_size_scaling": [0.4, 0.75],
-        "p_population_size_scaling": [0.7, 1.0],
+        "p_colony_size_scaling": [0.75],
+        "p_population_size_scaling": [1.0],
     })
 
-    run_experiments(argv[4], project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 30000, burn_in=False)
-
+    run_experiments(argv[4], project_root, slim_file, slim_executable, grid,
+                    defaults,
+                    simulation_len, carrying_capacity=15000,
+                    burn_in_time=1000, k_bottlenecks=2, k_bottleneck_min=7000,
+                    burn_in=False)
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     print(f"Peak RAM of SLiM: {usage.ru_maxrss / 1024:.0f} MB")

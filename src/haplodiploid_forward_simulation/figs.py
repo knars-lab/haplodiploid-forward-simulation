@@ -203,3 +203,29 @@ def queen_production_fig(df, project_root, fig_name, exp_name):
 
     plt.savefig(project_root / "figures" / exp_name / fig_name,
                 dpi=300, bbox_inches="tight")
+
+
+def k_colonies_heterozygosity_fig(df, project_root, fig_name, exp_name):
+    fig, ax1 = plt.subplots()
+
+    ax1.plot(df["generation"], df["nf"], color="red",
+             label="Number of colonies")
+    ax1.plot(df["generation"], df["K"], color="blue", label="K")
+    ax1.set_xlabel("Generation")
+    ax1.set_ylabel("Number of colonies")
+
+    ax2 = ax1.twinx()
+    ax2.plot(df["generation"], df["expected_heterozygosity"],
+             color="green", label="Expected heterozygosity")
+    ax2.set_ylabel("Expected heterozygosity")
+
+    # Combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+
+    ax1.legend(lines1 + lines2, labels1 + labels2,
+               loc="center left", bbox_to_anchor=(1.12, 0.5))
+
+    plt.savefig(project_root / "figures" / exp_name / fig_name,
+                dpi=300, bbox_inches="tight")
+    plt.close(fig)

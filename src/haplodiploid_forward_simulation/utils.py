@@ -88,30 +88,41 @@ def get_traj(simulation_len,
              burn_in_time,
              burn_in_k,
              k_bottlenecks,
-             c_bottlenecks,
              k_bottleneck_min,
-             c_traj = False,):
+             c_bottlenecks = None,
+             c_traj = False):
     burn_in_c = 1
+
     if c_traj:
         print("hello")
+        # still to do: build the C trajectory from c_bottlenecks
+        return None, None
+
     else:
         k_burn_in = np.tile(burn_in_k, burn_in_time)
-        c_burn_in = np.tile(burn_in_c, burn_in_time)
         k_traj = np.array([])
-        c_traj = np.linspace(burn_in_c, simulation_len)
+        c_traj_values = np.tile(burn_in_c, simulation_len)
 
-        for bottleneck in range(k_bottlenecks):
-            length = (simulation_len - burn_in_time) / k_bottlenecks
-            mid_point = length / 2
-            traj_cur_1 = np.linspace(burn_in_k, mid_point, k_bottleneck_min)
+        # generations per bottleneck, and the point where K is lowest
+        length = int((simulation_len - burn_in_time) / k_bottlenecks)
+        mid_point = int(length / 2)
+
+        for i in range(k_bottlenecks):
+            traj_cur_1 = np.linspace(burn_in_k, k_bottleneck_min, mid_point)
             traj_cur_2 = traj_cur_1[::-1]
             traj_cur = np.concatenate((traj_cur_1, traj_cur_2))
             k_traj = np.concatenate((k_traj, traj_cur))
 
         k_traj = np.concatenate((k_burn_in, k_traj))
-        # trajectories to eidos vector
+
+        # int rounds down edge case
+        if len(k_traj) < simulation_len:
+            k_traj = np.concatenate(
+                (k_traj, np.tile(burn_in_k, simulation_len - len(k_traj))))
+
         k_traj_vector = numpy_to_eidos(k_traj)
-        c_traj_vector = numpy_to_eidos(c_traj)
+        c_traj_vector = numpy_to_eidos(c_traj_values)
+
+        return k_traj_vector, c_traj_vector, k_traj, c_traj_values
 
 
-        return k_traj_vector, c_traj_vector
