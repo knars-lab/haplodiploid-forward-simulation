@@ -18,6 +18,8 @@ Example:
 Output:
     Saves a figures in the project's figures/ directory.
 """
+from figs import *
+from utils import *
 
 from sys import argv
 from pathlib import Path
@@ -30,77 +32,7 @@ import time
 from sklearn.model_selection import ParameterGrid
 
 
-def parse_to_dict(data):
-    lines = []
-    line = ""
-    data_dict = {"generation" : [],
-            "fixedMutations": [],
-            "expected_heterozygosity" : [],
-            "nf" : [],
-            "nm" : [],
-            "ne" : [],
-            "n" : [],
-            "cs" : [],
-            "new_queens" : [],
-            "raw_queens": [],
-                 }
 
-    for element in data:
-        if element != "\n":
-            line += element
-        else:
-            lines.append(line)
-            line = ""
-
-    for index, line in enumerate(lines):
-        if line.startswith("Generation FixedMutations"):
-            data_only = lines[index + 1:]
-            break
-
-    for i, line in enumerate(data_only):
-        colony_size_temp = []
-        new_queens_temp = []
-        raw_queens_temp = []
-        if line.startswith("extinction at"):
-            continue
-        line = line.split()
-        data_dict["generation"].append(int(line[0]))
-        data_dict["fixedMutations"].append(int(line[1]))
-        data_dict["expected_heterozygosity"].append(float(line[2]))
-        data_dict["nf"].append(float(line[3]))
-        data_dict["nm"].append(float(line[4]))
-        data_dict["ne"].append(float(line[5]))
-        data_dict["n"].append(float(line[6]))
-        colony_size = str(line[7][1:-1])
-
-        for x in colony_size.split(","):
-            x = x.strip("'")
-            if x:
-                colony_size_temp.append(int(x))
-        data_dict["cs"].append(colony_size_temp)
-        new_queens = str(line[8][1:-1])
-        for x in new_queens.split(","):
-            x = x.strip("'")
-            if x:
-                new_queens_temp.append(int(x))
-        data_dict["new_queens"].append(new_queens_temp)
-
-        raw_queens = str(line[9][1:-1])
-        for x in raw_queens.split(","):
-            x = x.strip("'")
-            if x:
-                raw_queens_temp.append(int(x))
-        data_dict["raw_queens"].append(raw_queens_temp)
-
-    return data_dict
-
-def numpy_to_eidos(array):
-    list = array.tolist()
-    eidos_vector = "c("
-    for element in list:
-            eidos_vector = eidos_vector + str(round(element, 5)) + ", "
-    eidos_vector = eidos_vector[:-2] + ")"
-    return eidos_vector
 
 def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
                    start_population_size, starting_virgin_queens, max_queens_per_colony,
@@ -143,242 +75,8 @@ def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
     return output.stdout
 
 
-def pop_size_fig(df, project_root, fig_name, exp_name):
-    fig, ax1 = plt.subplots()
 
-    # Left axis
-    ax1.plot(df["generation"], df["ne"], color="blue", label="Effective population size (Ne)")
-    ax1.plot(df["generation"], df["nf"], color="red", label="Number of colonies (breeding queens)")
-    ax1.plot(df["generation"], df["nm"], color="purple", label="Breeding males")
-    ax1.plot(df["generation"], df["n"], color="orange", label="population size (N)")
 
-    ax1.set_xlabel("Generation")
-    ax1.set_ylabel("Population size (log10)")
-    ax1.set_yscale("log")
-
-    # Right axis
-    ax2 = ax1.twinx()
-    ax2.plot(df["generation"], df["expected_heterozygosity"],
-             color="green", label="Expected heterozygosity")
-    ax2.set_ylabel("Expected heterozygosity")
-
-    # Combined legend
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="center left",
-    bbox_to_anchor=(1.12, 0.5))
-
-
-
-    plt.savefig(project_root / "figures" / exp_name /fig_name,
-                dpi=300, bbox_inches="tight")
-
-def col_size_fig(df, project_root, fig_name, exp_name):
-    fig, ax1 = plt.subplots()
-
-    # Left axis
-    #ax1.plot(df["generation"], df["ne"], color="blue", label="Effective population size (Ne)")
-
-    ax1.plot(df["generation"], df["nf"], color="red", label="Number of colonies (breeding queens)")
-
-    #ax1.plot(df["generation"], df["nm"], color="purple", label="Breeding males")
-    #ax1.plot(df["generation"], df["n"], color="orange", label="population size (N)")
-
-    ax1.set_xlabel("Generation")
-    ax1.set_ylabel("Population size (log10)")
-    ax1.set_yscale("log")
-
-    # Right axis
-    ax2 = ax1.twinx()
-    ax2.plot(df["generation"], df["expected_heterozygosity"],
-             color="green", label="Expected heterozygosity")
-    ax2.set_ylabel("Expected heterozygosity")
-
-    # Combined legend
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="center left",
-    bbox_to_anchor=(1.12, 0.5))
-
-
-
-    plt.savefig(project_root / "figures" / exp_name /fig_name,
-                dpi=300, bbox_inches="tight")
-
-def pop_size_only_fig(df, project_root, fig_name, exp_name):
-    fig, ax1 = plt.subplots()
-
-    # Left axis
-    ax1.plot(df["generation"], df["n"], color="orange", label="population size (N)")
-
-    ax1.set_xlabel("Generation")
-    ax1.set_ylabel("Population size")
-
-    ax1.legend( loc="center left", bbox_to_anchor=(1.12, 0.5))
-
-
-    plt.savefig(project_root / "figures" / exp_name /fig_name,
-                dpi=300, bbox_inches="tight")
-
-
-
-
-def expected_heterozygosity_fig(df, project_root, fig_name, exp_name):
-    fig, ax1 = plt.subplots()
-
-    ax1.plot(df["generation"], df["expected_heterozygosity"], color="green",
-             label="Expected heterozygosity (queens)")
-    ax1.set_xlabel("Generation")
-    ax1.set_ylabel("Expected heterozygosity")
-
-    # Right axis
-    ax2 = ax1.twinx()
-    ax2.plot(df["generation"], df["nf"], color="red",
-             label="Number of colonies (breeding queens)")
-    ax2.set_ylabel("Number of colonies")
-
-    # Combined legend
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="center left",
-               bbox_to_anchor=(1.12, 0.5))
-
-    plt.savefig(project_root / "figures" / exp_name / fig_name,
-                dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-def colony_size_distribution_fig(df, project_root, fig_name, exp_name):
-
-    colony_sizes = df["cs"]
-
-    mean_colony_size = []
-    sd_colony_size = []
-
-    for gen in colony_sizes:
-        mean_colony_size.append(np.mean(gen))
-        sd_colony_size.append(np.std(gen))
-
-    fig, ax1 = plt.subplots()
-
-    # Left axis
-    ax1.plot(df["generation"], mean_colony_size, color="red",
-                label="Mean colony size")
-    ax1.fill_between(
-        df["generation"],
-        np.array(mean_colony_size) - np.array(sd_colony_size),
-        np.array(mean_colony_size) + np.array(sd_colony_size),
-        color="red",
-        alpha=0.2,
-        label="± sd"
-    )
-
-    ax1.set_xlabel("Generation")
-    ax1.set_ylabel("Individuals (males and worker females)")
-
-    # Right axis
-    ax2 = ax1.twinx()
-    ax2.plot(df["generation"], df["nf"], color="blue",
-             label="Number of colonies (breeding queens)")
-    ax2.set_ylabel("Number of colonies")
-
-    # Combined legend
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="center left",
-               bbox_to_anchor=(1.12, 0.5))
-
-    plt.savefig(project_root / "figures" / exp_name / fig_name,
-                dpi=300, bbox_inches="tight")
-
-
-def queen_production_fig(df, project_root, fig_name, exp_name):
-    new_queens = df["new_queens"]
-    raw_queens = df["raw_queens"]
-
-    mean_new_queens = []
-    sd_new_queens = []
-    mean_raw_queens = []
-    sd_raw_queens = []
-
-    for gen in new_queens:
-        mean_new_queens.append(np.mean(gen))
-        sd_new_queens.append(np.std(gen))
-
-    for gen in raw_queens:
-        mean_raw_queens.append(np.mean(gen))
-        sd_raw_queens.append(np.std(gen))
-
-    fig, ax1 = plt.subplots()
-
-    ax1.plot(df["generation"], mean_raw_queens, color="blue",
-             label="Queens produced colony")
-    ax1.fill_between(
-        df["generation"],
-        np.array(mean_raw_queens) - np.array(sd_raw_queens),
-        np.array(mean_raw_queens) + np.array(sd_raw_queens),
-        color="blue",
-        alpha=0.2,
-        label="Raw ± SD"
-    )
-
-    ax1.plot(df["generation"], mean_new_queens, color="orange",
-             label="Queens that survive and mate in the next generation")
-    ax1.fill_between(
-        df["generation"],
-        np.array(mean_new_queens) - np.array(sd_new_queens),
-        np.array(mean_new_queens) + np.array(sd_new_queens),
-        color="orange",
-        alpha=0.2,
-        label="Surviving ± SD"
-    )
-
-    ax1.set_xlabel("Generation")
-    ax1.set_ylabel("Queens per colony")
-
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    ax1.legend(lines1, labels1, loc="center left",
-               bbox_to_anchor=(1.12, 0.5))
-
-    plt.savefig(project_root / "figures" / exp_name / fig_name,
-                dpi=300, bbox_inches="tight")
-
-
-def get_traj_no_burn_in(simulation_len, carrying_capacity, inter_comp = 1):
-    k_traj = np.tile(carrying_capacity, simulation_len)
-    c_traj = np.tile(inter_comp, simulation_len)
-
-    k_traj_vector = numpy_to_eidos(k_traj)
-    c_traj_vector = numpy_to_eidos(c_traj)
-
-    return k_traj_vector, c_traj_vector
-
-
-def get_traj(simulation_len):
-    burn_in_time = 1000
-    burn_in_k = 50000
-    burn_in_c = 1
-
-    # Comment out for pinned k and c
-    # create burn in and concatenate with trajectories
-    # k_burn_in = np.tile(burn_in_k, burn_in_time)
-    # c_burn_in = np.tile(burn_in_c, burn_in_time)
-    # k_sim = np.linspace(burn_in_k, 1000, simulation_len - burn_in_time)
-    # c_sim = np.linspace(1, 1.5, simulation_len - burn_in_time)
-    # k_traj = np.concatenate((k_burn_in, k_sim))
-    # c_traj = np.concatenate((c_burn_in, c_sim))
-
-    # comment out if trajectories for C and K are needed
-    k_traj = np.tile(burn_in_k, simulation_len)
-    c_traj = np.tile(burn_in_c, simulation_len)
-
-    # trajectories to eidos vector
-    k_traj_vector = numpy_to_eidos(k_traj)
-    c_traj_vector = numpy_to_eidos(c_traj)
-
-    return k_traj_vector, c_traj_vector
 
 
 
@@ -407,6 +105,8 @@ def run_experiments(exp_name,  project_root, slim_file, slim_executable, grid,
 
                 k_traj, c_traj = get_traj_no_burn_in(simulation_len,
                                                      carrying_capacity)
+
+
                 data = run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj, **params)
 
                 stop =  time.perf_counter()
@@ -484,7 +184,7 @@ def main() -> None:
     })
 
     run_experiments(argv[4], project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 30000, burn_in=False)
+                    simulation_len, carrying_capacity = 15000, burn_in=False)
 
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
