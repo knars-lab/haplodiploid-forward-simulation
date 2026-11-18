@@ -1,0 +1,7 @@
+Meta data queen_scalingV3
+queen_scalingV3_1 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'F', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.8, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.8, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08, 'sd_control_queen': 20}
+queen_scalingV3_1 : run time: 0 min 20.40 sec
+queen_scalingV3_2 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'F', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.8, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.8, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08, 'sd_control_queen': 50}
+queen_scalingV3_2 : run time: 0 min 20.81 sec
+queen_scalingV3_3 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'F', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.8, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.8, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08, 'sd_control_queen': 80}
+queen_scalingV3_3 : run time: 0 min 26.16 sec

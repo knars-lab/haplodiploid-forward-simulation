@@ -1,0 +1,9 @@
+Meta data dynamics_V9
+dynamics_V9_1 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'T', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.4, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.3, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08}
+dynamics_V9_1 : run time: 0 min 6.92 sec
+dynamics_V9_2 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'T', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.4, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.5, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08}
+dynamics_V9_2 : run time: 0 min 10.69 sec
+dynamics_V9_3 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'F', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.4, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.3, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08}
+dynamics_V9_3 : run time: 0 min 31.20 sec
+dynamics_V9_4 : 15000 | {'start_population_size': 5000, 'starting_virgin_queens': 300, 'max_queens_per_colony': 100, 'max_colony_size': 300, 'sex_ratio': 0.3, 'intra_specific_comp': 'F', 'p_colony_size_scaling': 0.8, 'c_intra_threshold': 0.4, 'p_queen_success_scaling': 0.8, 'p_population_size_scaling': 1.0, 'p_new_queen_scaling': 0.5, 'mutation_rate': 3.6e-09, 'recombination_rate': 9e-08}
+dynamics_V9_4 : run time: 0 min 30.82 sec

@@ -23,9 +23,10 @@ initialize() {
 	if (!exists("sex_ratio"))
 		defineConstant("sex_ratio", 0.3);
 	if (!exists("intra_specific_comp"))
-		defineConstant("intra_specific_comp", F);
+		defineConstant("intra_specific_comp", T);
 	if (!exists("C_intra_threshold"))
 		defineConstant("C_intra_threshold", 1.0);
+		
 
 	// ---- Hyperparameters ----
 	if (!exists("p_queen_success_scaling"))
@@ -36,6 +37,10 @@ initialize() {
 		defineConstant("p_colony_size_scaling", 0.5);
 	if (!exists("p_new_queen_scaling"))
 		defineConstant("p_new_queen_scaling", 0.5);
+	if (!exists("sd_control_queen"))
+		defineConstant("sd_control_queen", 50); // number of coin flips used to draw the pf
+	if (!exists("sd_control_colony"))
+		defineConstant("sd_control_colony", 50);
 
 	// ---- Genetic parameters ----
 	if (!exists("mutation_rate"))
@@ -244,25 +249,30 @@ reproduction(p1) {
 	*/
 	last_gen = (sim.generation >= simulation_length);
 	
+	
 	// Create vector of males and females per colony 
 	sampled_sex_ratio = rbinom(size(queens), 10, sex_ratio) / 10.0;
 	males_in_colony = asInteger(round(sampled_sex_ratio * colony_sizes_cur));
 	females_in_colony = colony_sizes_cur - males_in_colony;
 	
+	
 	p_queen = p_new_queen_scaling * (colony_sizes_cur / max_colony_size);
 
-	// queens produced per colony (capped by the number of females in the colony)
-	queens_produced = pmin(rbinom(size(queens), max_queens_per_colony, p_queen), females_in_colony);
+	// every colony gets its own queen probability
+	p_colony = rbinom(size(queens), sd_control_queen, p_queen) / sd_control_queen;
 
-	// of those, the queens that survive and mate
+	// queens produced per colony (capped by the number of females in the colony)
+	queens_produced = pmin(rbinom(size(queens), max_queens_per_colony, p_colony), females_in_colony);
+	sim.setValue("raw_queens", queens_produced);   // raw production per colony
+	
+	// the queens that survive and mate
 	queens_produced = rbinom(size(queens), queens_produced, min(1.0, p_queen_success_scaling));
-	new_queen_count = queens_produced;
+
+
+
 	if (!last_gen) {
-		
-	
-	
-		// one entry per candidate queen: the index of the colony it comes from
-		candidate_owner = repEach(seqAlong(queens), queens_produced);	
+		// vector with the parent of each candidate queen
+		candidate_parent_colony = repEach(seqAlong(queens), queens_produced);	
 	
 		// get K and C for next population
 		k_next_generation = asInteger(K_traj[sim.generation]);
@@ -270,34 +280,73 @@ reproduction(p1) {
 		max_population_size = rbinom(1, k_next_generation, p_population_size_scaling);	
 	
 		//number of candidate colonies 
-		number_of_colonies = size(candidate_owner);    
+		number_of_colonies = size(candidate_parent_colony);    
 	
 		// Max amount of colonies the system of the next generation can sustain   
 		max_colonies = k_next_generation / max_colony_size;
-		
-		// competition factor is > 1 when number of colonies exceeds competition threshold
-		C_intra = 1.0;
-		if (intra_specific_comp == T & (number_of_colonies > (C_intra_threshold * max_colonies))) {
-			C_intra = number_of_colonies / (C_intra_threshold * max_colonies);
-		}
-	
-	// Sample colony sizes, one per candidate queen
-		colony_sizes_next = integer(0);
-		for (i in seqAlong(candidate_owner)) {
-			p = min(1.0, (p_colony_size_scaling * (1/C_intra) * (1/c_next)));
-			colony_size = rbinom(1, max_colony_size, p);
-			colony_sizes_next = c(colony_sizes_next, colony_size);
-		}
 
+		
+		candidate_queen_count = size(candidate_parent_colony);
+		// base probability (capped at 1)
+		p_colony_size = pmin(1.0, p_colony_size_scaling);
+
+		// every candidate gets its own noisy colony-size probability
+		p_colony = rbinom(candidate_queen_count, sd_control_colony, p_colony_size) / sd_control_colony;
+
+		// colony sizes drawn from that probability
+		colony_sizes_next = rbinom(candidate_queen_count, max_colony_size, p_colony);
+		
+		
 		// Down sample candidates when total exceeds the maximum population size
 		while (sum(colony_sizes_next) > max_population_size) {
 			down_sampled_index = sample(seqAlong(colony_sizes_next), 1);
-			candidate_owner = candidate_owner[seqAlong(candidate_owner) != down_sampled_index];
+			candidate_parent_colony = candidate_parent_colony[seqAlong(candidate_parent_colony) != down_sampled_index];
 			colony_sizes_next = colony_sizes_next[seqAlong(colony_sizes_next) != down_sampled_index];
 		}
+		
+		
+		// Remaining colonies after K-based downsampling
+		remaining_colonies = size(candidate_parent_colony);
+
+		// Intraspecific competition
+		intra_punish = 0;
+		if (intra_specific_comp == T) {
+    		intra_punish = asInteger(max(
+        0.0,
+        asFloat(remaining_colonies) -
+        (C_intra_threshold * max_colonies)));
+		}
+
+		// Interspecific competition
+		inter_punish = asInteger(round(
+   	asFloat(remaining_colonies) * (C_inter - 1.0)));
+		
+		
+		// Additional intraspecific downsampling
+		for (i in seqLen(min(intra_punish, size(candidate_parent_colony)))) {
+   	 down_sampled_index = sample(seqAlong(candidate_parent_colony), 1);
+
+  		candidate_parent_colony = candidate_parent_colony[
+         seqAlong(candidate_parent_colony) != down_sampled_index];
+			colony_sizes_next = colony_sizes_next[
+         seqAlong(colony_sizes_next) != down_sampled_index];
+		}
+
+		// Additional interspecific downsampling
+		for (i in seqLen(min(inter_punish, size(candidate_parent_colony)))) {
+  			down_sampled_index = sample(seqAlong(candidate_parent_colony), 1);
+
+    		candidate_owner = candidate_parent_colony[
+        		seqAlong(candidate_parent_colony) != down_sampled_index];
+			colony_sizes_next = colony_sizes_next[
+        		seqAlong(colony_sizes_next) != down_sampled_index];
+		}
+
+		
+
 
 		// Down-sampling may have removed every colony
-		if (size(candidate_owner) == 0) {
+		if (size(candidate_parent_colony) == 0) {
 			sim.setValue("Nf", 0);
 			sim.setValue("Nm", 0);
 			sim.setValue("colony_sizes", integer(0));
@@ -306,7 +355,7 @@ reproduction(p1) {
 		}
 	
 		// fix out of bound
-		new_queen_count = tabulate(candidate_owner, size(queens) - 1);
+		new_queen_count = tabulate(candidate_parent_colony, size(queens) - 1);
 		sim.setValue("colony_sizes_next", colony_sizes_next);
 	
 	}		
@@ -369,13 +418,14 @@ reproduction(p1) {
 	sim.setValue("exp_het_queens", 0.0);
 	sim.setValue("new_queens", 0);
 	sim.setValue("colony_sizes", 0);
-
+	sim.setValue("raw_queens", 0);
+	
 	// Colony size of every founding queen (same logic as the colony size draw in reproduction)
 	n_f = sum(p1.individuals.sex == "F");
 	p0 = min(1.0, p_colony_size_scaling * (1 / C_traj[0]));
 	sim.setValue("colony_sizes_next", rbinom(n_f, max_colony_size, p0));
 
-	catn("Generation FixedMutations expected_heterozygosity_colony_founding_queens Nf Nm Ne N colony_size new_queens");
+	catn("Generation FixedMutations expected_heterozygosity_colony_founding_queens Nf Nm Ne N  colony_size new_queens raw_queens");
 }
 
 survival()
@@ -393,6 +443,7 @@ survival()
 	exp_het = sim.getValue("exp_het_queens");
 	colony_sizes = sim.getValue("colony_sizes");
 	fixedCount = sim.substitutions.size();
+	raw_queens = sim.getValue("raw_queens");
 
 	// 
 	new_queen_total = sum(inds.sex == "F");
@@ -419,11 +470,10 @@ survival()
 	Ne = Nf + Nm;
 
 	catn(sim.generation + " " + fixedCount + " " + exp_het + " " + Nf + " " + Nm + " " +
-		Ne + " " + N + " [" + paste(colony_sizes, sep=",") + "]" + " [" + paste(new_queens, sep=",") + "]");
+		Ne + " " + N + " [" + paste(colony_sizes, sep=",") + "]" + " [" + paste(new_queens, sep=",") + "]" + " [" + paste(raw_queens, sep=",") + "]");
 }
 // upper limit of 20000 
 20000 late() {
 	sim.simulationFinished();
 }
-
 
