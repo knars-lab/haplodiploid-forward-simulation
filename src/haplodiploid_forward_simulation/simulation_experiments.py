@@ -484,7 +484,7 @@ def main() -> None:
     })
 
     run_experiments(argv[4], project_root, slim_file, slim_executable, grid, defaults,
-                    simulation_len, carrying_capacity = 15000, burn_in=False)
+                    simulation_len, carrying_capacity = 30000, burn_in=False)
 
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
