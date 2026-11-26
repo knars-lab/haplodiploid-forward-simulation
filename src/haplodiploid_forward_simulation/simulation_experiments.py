@@ -16,7 +16,7 @@ Example:
     uv run python simulation_experiments.py bumble_bee_forward_simulation.slim 1000
 
 Output:
-    Saves a figures in the project's figures/ directory.
+    Saves a figures in the figures/ directory.
 """
 from figs import *
 from utils import *
@@ -30,9 +30,6 @@ import numpy as np
 import resource
 import time
 from sklearn.model_selection import ParameterGrid
-
-
-
 
 def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
                    start_population_size, starting_virgin_queens, max_queens_per_colony,

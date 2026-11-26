@@ -1,0 +1,461 @@
+/*
+Script:        bumble_bee_forward_simulation.slim
+Author:        Wouter Driesen
+Date:          24 November 2026
+Description:   This is an adaptation of the haplodiploid forward simulation model: 
+					https://github.com/wurmlab/haplodiploid_simulations/blob/main/haplodiploid.slim. 
+					Modified to simulate bumblebee population dynamics, incorporating colony size, 
+					queen production and reproductive success to generate patterns of neutral genetic 
+					variation over time.				
+SLiM version:  3.7
+*/
+
+initialize() {
+	// run settings
+	if (!exists("simulation_length"))
+		defineConstant("simulation_length", 100);
+
+	// environmental trajectories (one value per generation) 
+	if (!exists("K_traj"))
+		defineConstant("K_traj", rep(10000, simulation_length));
+	if (!exists("C_traj"))
+		defineConstant("C_traj", rep(1.0, simulation_length));
+
+	// starting population 
+	if (!exists("start_population_size"))
+		defineConstant("start_population_size", 3000);
+	if (!exists("starting_virgin_queens"))
+		defineConstant("starting_virgin_queens", 200);
+
+	// species parameters
+	if (!exists("max_colony_size"))
+		defineConstant("max_colony_size", 200);
+	if (!exists("max_queens_per_colony"))
+		defineConstant("max_queens_per_colony", 100);
+	if (!exists("sex_ratio"))
+		defineConstant("sex_ratio", 0.3);
+	if (!exists("intra_specific_comp"))
+		defineConstant("intra_specific_comp", T);
+	if (!exists("C_intra_threshold"))
+		defineConstant("C_intra_threshold", 1.0);
+		
+	// hyperparameters
+	if (!exists("p_queen_success_scaling"))
+		defineConstant("p_queen_success_scaling", 0.7);
+	if (!exists("p_population_size_scaling"))
+		defineConstant("p_population_size_scaling", 0.8);
+	if (!exists("p_colony_size_scaling"))
+		defineConstant("p_colony_size_scaling", 0.5);
+	if (!exists("p_new_queen_scaling"))
+		defineConstant("p_new_queen_scaling", 0.5);
+	if (!exists("sd_control_queen"))
+		defineConstant("sd_control_queen", 50); 
+	if (!exists("sd_control_colony"))
+		defineConstant("sd_control_colony", 50);
+
+	// genetic parameters
+	if (!exists("mutation_rate"))
+		defineConstant("mutation_rate", 3.6e-9);
+	if (!exists("recombination_rate"))
+		defineConstant("recombination_rate", 8.73e-8);
+
+	// model configuration 
+	initializeSLiMModelType("nonWF");
+	initializeSex("A");
+	initializeMutationRate(mutation_rate);
+	initializeRecombinationRate(recombination_rate);
+
+	// initialise globals
+	defineGlobal("Nf", 0);
+	defineGlobal("Nm", 0);
+
+	// mutations
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	
+	m1.convertToSubstitution = T;		// converts mutations that have become fixed into substitutions
+	m1.haploidDominanceCoeff = 1.0;	// haploid dosage coefficient
+	
+	// genome
+	initializeGenomicElementType("g1", m1, 1.0);
+	initializeGenomicElement(g1, 0, 19739999);
+}
+
+// function definitions
+
+/*
+Generates a haploid male offspring from a diploid queen
+	Arguments:
+   	queen (object<Individual>): Diploid queen individual
+ 		strand: Determines which parental genome is used as the starting
+            	strand (1 = genome1, 2 = genome2)
+   	breaks: Recombination breakpoints form the queens genome
+   Returns: 
+   	new_male (object<Individual>): haploid male 
+*/
+function (object<Individual>) GenerateMale(
+											object<Individual> queen,  
+											integer strand, 
+											integer breaks){
+												
+	if (strand == 1){
+		new_male = subpop.addRecombinant(
+       				strand1 = queen.genome1,
+        				strand2 = queen.genome2,
+        				breaks1 = breaks,
+        				strand3 = NULL,
+        				strand4 = NULL,
+        				breaks2 = NULL,
+        				sex = "M");
+    }
+    else{
+		new_male = subpop.addRecombinant(
+						strand1 = queen.genome2,
+						strand2 = queen.genome1,
+						breaks1 = breaks,
+						strand3 = NULL,
+						strand4 = NULL,
+						breaks2 = NULL,
+						sex = "M");				}
+    return new_male;
+}
+
+/*
+Generates diploid female offspring from a diploid queen and haploid male 
+	Arguments:
+   	queen (object<Individual>): Diploid queen individual
+   	male (object<Individual>): haploid male individual
+ 		strand : Determines which parental genome is used as the starting
+            	strand (1 = genome1, 2 = genome2)
+   	breaks : Recombination breakpoints form the queens genome
+   Returns: 
+   	new_female (object<Individual>): haploid female
+*/
+
+function (object<Individual>) GenerateFemale(
+											object<Individual> queen,
+											object<Individual> male, 
+											integer strand, 
+											integer breaks) {
+	
+	if (strand == 1){
+   	new_female = subpop.addRecombinant(
+   						strand1 = queen.genome1,
+							strand2 = queen.genome2,
+							breaks1 = breaks,
+							strand3 = male.genome1,
+							strand4 = NULL,
+							breaks2 = NULL,
+							sex = "F");
+    }
+    else{
+		new_female = subpop.addRecombinant(
+							strand1 = queen.genome2,
+							strand2 = queen.genome1,
+							breaks1 = breaks,
+							strand3 = male.genome1,
+							strand4 = NULL,
+							breaks2 = NULL,
+							sex = "F");
+				}
+    return new_female;
+}    
+
+first() {
+// assigns the current K and C_inter from trajectory vectors  
+  	defineGlobal("K", asInteger(K_traj[sim.generation - 1]));
+  	defineGlobal("C_inter", C_traj[sim.generation - 1]);
+  }
+
+reproduction(p1) {
+	/*
+ 		In the reproduction only males and queens that that will 
+ 		contribute to the next generation are generated in the 
+ 		current generation. Because queens production depends on
+ 		the colony size, the colony size of the next generation 
+ 		must be determined in the current generation. This is 
+ 		possible because K trajectory is deterministic.
+ 		
+ 		The reproduction therefore follows 3 steps:
+ 		1. Determine the colony founding queens and the mating males.
+ 		2. Determine colony sizes of the NEXT generation 
+ 		3. Per colony male and queen generation of the CURRENT generation
+ 		
+ 		Only in the last generation all females are generated  
+ 		
+ 		TODO: only generate males that reproduce
+	*/
+	
+	// check whether the simulation has reached its final generation
+	last_gen = (sim.generation >= simulation_length);
+	
+	// retrieve individuals of current subpopulation 
+	inds = subpop.individuals;
+
+	// create logical vector with true false labels 
+	is_queen = (inds.sex == "F") ;
+	is_male = !is_queen;
+	
+	// retrieve all males and the queens that will reproduce
+	queens = inds[is_queen];
+	males = inds[is_male];
+
+	// get chromosome object
+	chr = sim.chromosome;	
+	
+	// get the colony sizes of the generation generation (calculated in the previous generation) 
+	colony_sizes_cur = sim.getValue("colony_sizes_next");
+	
+	// ----------------------------------------------------------------------------
+	// 1. Determine the colony founding queens and the mating males.  
+	// ----------------------------------------------------------------------------
+	
+	// if no queen survived and mated, no colonies can be founded.
+	// Record this and stop
+	if (size(queens) == 0) {
+		sim.setValue("Nf", 0);
+		sim.setValue("Nm", 0);
+		sim.setValue("colony_sizes", integer(0));
+		self.active = 0;
+		return;
+	}
+	
+	// sample the breeding males, one for each queens that will reproduce
+	// one male can mate with multiple queens
+	breeding_males = sample(males, size(queens), replace = T);
+	
+	// For computational effecienncy only queens that will establish a colony are generated.
+		
+	// ----------------------------------------------------------------------------
+	// 2. Determine colony sizes of the NEXT generation 
+	// ---------------------------------------------------------------------------- 
+
+	// sample sex ratio to introduce variation is sex distriburion per colony 
+	// TODO introduce an sd_control variable to control varation instaed of 10 
+	sampled_sex_ratio = rbinom(size(queens), 10, sex_ratio) / 10.0;
+	
+	// Create vectors for in which each element represents number of femalels or males in the a colony
+	males_in_colony = asInteger(round(sampled_sex_ratio * colony_sizes_cur));
+	females_in_colony = colony_sizes_cur - males_in_colony;
+	
+	// p value for each queen to relate queen production to the colony size 
+	p_queen = p_new_queen_scaling * (colony_sizes_cur / max_colony_size);
+
+	// every colony gets its own queen probability, which depend on p_queen
+	p_colony = rbinom(size(queens), sd_control_queen, p_queen) / sd_control_queen;
+
+	// queens produced per colony (capped by the number of females in the colony)
+	queens_produced = pmin(rbinom(size(queens), max_queens_per_colony, p_colony), females_in_colony);
+	sim.setValue("raw_queens", queens_produced);   // raw production per colony
+	
+	// the queens that survive and mate
+	queens_produced = rbinom(size(queens), queens_produced, min(1.0, p_queen_success_scaling));
+
+
+
+	if (!last_gen) {
+		// vector with the parent of each candidate queen
+		candidate_parent_colony = repEach(seqAlong(queens), queens_produced);	
+	
+		// get K and C for next population
+		k_next_generation = asInteger(K_traj[sim.generation]);
+		c_next = C_traj[sim.generation];
+		max_population_size = rbinom(1, k_next_generation, p_population_size_scaling);	
+	
+		//number of candidate colonies 
+		number_of_colonies = size(candidate_parent_colony);    
+	
+		// Max amount of colonies the system of the next generation can sustain   
+		max_colonies = k_next_generation / max_colony_size;
+
+		
+		candidate_queen_count = size(candidate_parent_colony);
+		// base probability (capped at 1)
+		p_colony_size = pmin(1.0, p_colony_size_scaling);
+
+		// every candidate gets its own noisy colony-size probability
+		p_colony = rbinom(candidate_queen_count, sd_control_colony, p_colony_size) / sd_control_colony;
+
+		// colony sizes drawn from that probability
+		colony_sizes_next = rbinom(candidate_queen_count, max_colony_size, p_colony);
+		
+		
+		// Down sample candidates when total exceeds the maximum population size
+		while (sum(colony_sizes_next) > max_population_size) {
+			down_sampled_index = sample(seqAlong(colony_sizes_next), 1);
+			candidate_parent_colony = candidate_parent_colony[seqAlong(candidate_parent_colony) != down_sampled_index];
+			colony_sizes_next = colony_sizes_next[seqAlong(colony_sizes_next) != down_sampled_index];
+		}
+		
+		
+		// Remaining colonies after K-based downsampling
+		remaining_colonies = size(candidate_parent_colony);
+
+		// Intraspecific competition
+		intra_punish = 0;
+		if (intra_specific_comp == T) {
+    		intra_punish = asInteger(max(
+        0.0,
+        asFloat(remaining_colonies) -
+        (C_intra_threshold * max_colonies)));
+		}
+
+		// Interspecific competition
+		inter_punish = asInteger(round(
+   	asFloat(remaining_colonies) * (C_inter - 1.0)));
+		
+		
+		// Additional intraspecific downsampling
+		for (i in seqLen(min(intra_punish, size(candidate_parent_colony)))) {
+   	   down_sampled_index = sample(seqAlong(candidate_parent_colony), 1);
+
+  		   candidate_parent_colony = candidate_parent_colony[
+         seqAlong(candidate_parent_colony) != down_sampled_index];
+			colony_sizes_next = colony_sizes_next[
+         seqAlong(colony_sizes_next) != down_sampled_index];
+		}
+
+		// Additional interspecific downsampling
+		for (i in seqLen(min(inter_punish, size(candidate_parent_colony)))) {
+  			down_sampled_index = sample(seqAlong(candidate_parent_colony), 1);
+
+    		candidate_owner = candidate_parent_colony[
+        		seqAlong(candidate_parent_colony) != down_sampled_index];
+			colony_sizes_next = colony_sizes_next[
+        		seqAlong(colony_sizes_next) != down_sampled_index];
+		}
+
+		
+
+
+		// Down-sampling may have removed every colony
+		if (size(candidate_parent_colony) == 0) {
+			sim.setValue("Nf", 0);
+			sim.setValue("Nm", 0);
+			sim.setValue("colony_sizes", integer(0));
+			self.active = 0;
+			return;
+		}
+	
+		// fix out of bound
+		new_queen_count = tabulate(candidate_parent_colony, size(queens) - 1);
+		sim.setValue("colony_sizes_next", colony_sizes_next);
+	
+	}		
+	// ----------------------------------------------------------------------------
+	// 3. Per colony male and female generation of the CURRENT generation
+	// ----------------------------------------------------------------------------
+		
+	
+	
+	for (i in seqAlong(queens)) {
+	
+		// males 	
+		for (male in seqLen(males_in_colony[i])) {
+			breaks = chr.drawBreakpoints(queens[i]);
+			if (rbinom(1, 1, 0.5)){
+				new_male = GenerateMale(queens[i], 1, breaks);
+			}
+				
+			else{
+				new_male = GenerateMale(queens[i], 2, breaks);
+			}
+		}
+		
+		// last generation: all females otherwise only the queens
+		if (last_gen)
+			n_females = females_in_colony;
+		else
+			n_females = new_queen_count;
+
+		for (f in seqLen(n_females[i])) {
+			breaks = chr.drawBreakpoints(queens[i]);
+			if (rbinom(1, 1, 0.5))
+				new_female = GenerateFemale(queens[i], breeding_males[i], 1, breaks);
+			else
+				new_female = GenerateFemale(queens[i], breeding_males[i], 2, breaks);
+		}
+ 	}		
+	Nf = size(queens);
+	Nm = size(unique(breeding_males));
+	
+	sim.setValue("new_queens", queens_produced);
+	sim.setValue("Nf", Nf);
+	sim.setValue("Nm", Nm);
+	sim.setValue("colony_sizes", colony_sizes_cur);
+	
+
+	queen_genomes = c(queens.genome1, queens.genome2);
+	sim.setValue("exp_het_queens", calcHeterozygosity(queen_genomes));
+	self.active = 0;
+}
+
+1 {
+	// Population = founding queens + males. (Every female is a founding queen)
+	sim.addSubpop("p1", start_population_size,
+		sexRatio = (start_population_size - starting_virgin_queens) / start_population_size);
+
+	// initialise Nf and Nm
+	sim.setValue("Nf", 0);
+	sim.setValue("Nm", 0);
+	sim.setValue("exp_het_queens", 0.0);
+	sim.setValue("new_queens", 0);
+	sim.setValue("colony_sizes", 0);
+	sim.setValue("raw_queens", 0);
+	
+	// Colony size of every founding queen (same logic as the colony size draw in reproduction)
+	n_f = sum(p1.individuals.sex == "F");
+	p0 = min(1.0, p_colony_size_scaling * (1 / C_traj[0]));
+	sim.setValue("colony_sizes_next", rbinom(n_f, max_colony_size, p0));
+
+	catn("Generation FixedMutations expected_heterozygosity_colony_founding_queens Nf Nm Ne N  colony_size new_queens raw_queens");
+}
+
+survival()
+{
+	// non-overlapping generations, avoid fitness-based mortality
+	return (individual.age == 0);
+}
+
+1: late() {
+	// Retrieve current generation information
+	inds = sim.subpopulations.individuals;
+	Nf = sim.getValue("Nf");
+	Nm = sim.getValue("Nm");
+	new_queens = sim.getValue("new_queens");
+	exp_het = sim.getValue("exp_het_queens");
+	colony_sizes = sim.getValue("colony_sizes");
+	fixedCount = sim.substitutions.size();
+	raw_queens = sim.getValue("raw_queens");
+
+	// 
+	new_queen_total = sum(inds.sex == "F");
+	new_males = sum(inds.sex == "M");
+
+	if (sim.generation == 1)
+		N = size(inds);
+	else
+		N = sum(colony_sizes);
+
+	// stop after the last generation 
+	if (sim.generation >= simulation_length)
+		sim.simulationFinished();
+
+	// extinction
+	if (sim.generation > 1 &
+		(Nf == 0 | Nm == 0 | new_males == 0 | new_queen_total == 0)) {
+		catn("extinction at generation  " + sim.generation);
+		sim.simulationFinished();
+		return;
+	}
+
+	// effective population size (0 when Nf and Nm are both 0)
+	Ne = Nf + Nm;
+
+	catn(sim.generation + " " + fixedCount + " " + exp_het + " " + Nf + " " + Nm + " " +
+		Ne + " " + N + " [" + paste(colony_sizes, sep=",") + "]" + " [" + paste(new_queens, sep=",") + "]" + " [" + paste(raw_queens, sep=",") + "]");
+}
+// upper limit of 20000 
+20000 late() {
+	sim.simulationFinished();
+}
+
