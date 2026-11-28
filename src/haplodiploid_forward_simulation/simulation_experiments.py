@@ -148,12 +148,15 @@ def main() -> None:
     simulation_len = int(argv[2])
     project_root = Path(__file__).resolve().parents[2]
     slim_file = project_root / "slim" / file_name
-    vcf_path = project_root / "data" / "test_vcf"
+
 
     if argv[3] == "local":
         slim_executable = Path.home() / "alt_software_versions/SLiM.V3.7/SLiM/build/slim"
+        vcf_path = project_root / "data" / "test_vcf"
+
     elif argv[3] == "server":
         slim_executable = Path.home() / "software/slim3.7/bin/slim"
+        vcf_path = project_root / "temp_data" / "test_vcf"
     else:
         print("specify server or local")
         exit()
