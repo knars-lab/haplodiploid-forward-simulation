@@ -13,7 +13,7 @@ Arguments:
         Number of generations to simulate.
 
 Example:
-    uv run python simulation_experiments.py bumble_bee_forward_simulation.slim 1000
+    uv run python simulation_experiments.py bumble_bee_forward_simulationV1.slim 5000 local test_vcf
 
 Output:
     Saves a figures in the figures/ directory.
@@ -31,34 +31,32 @@ import resource
 import time
 from sklearn.model_selection import ParameterGrid
 
-def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
+def run_simulation(slim_file, slim_executable, vcf_path, vcf_name,  simulation_len, k_traj,
                    start_population_size, starting_virgin_queens, max_queens_per_colony,
-                   max_colony_size, sex_ratio, intra_specific_comp, p_colony_size_scaling,
+                   max_colony_size, sex_ratio, p_colony_size_scaling,
                    p_population_size_scaling, p_new_queen_scaling, p_queen_success_scaling,
-                   mutation_rate, c_intra_threshold, recombination_rate, sd_control_queen, sd_control_colony):
+                   mutation_rate, recombination_rate, sd_control_queen,
+                   sd_control_colony):
     command = [
         str(slim_executable),
         "-d", f"simulation_length={simulation_len}",
         "-d", f"K_traj={k_traj}",
-        "-d", f"C_traj={c_traj}",
         "-d", f"start_population_size={start_population_size}",
         "-d", f"starting_virgin_queens={starting_virgin_queens}",
         "-d", f"max_queens_per_colony={max_queens_per_colony}",
         "-d", f"max_colony_size={max_colony_size}",
         "-d", f"sex_ratio={sex_ratio}",
-        "-d", f"intra_specific_comp={intra_specific_comp}",
         "-d", f"p_colony_size_scaling={p_colony_size_scaling}",
         "-d", f"p_population_size_scaling={p_population_size_scaling}",
         "-d", f"p_new_queen_scaling={p_new_queen_scaling}",
         "-d", f"p_queen_success_scaling={p_queen_success_scaling}",
         "-d", f"mutation_rate={mutation_rate}",
-        "-d", f"C_intra_threshold={c_intra_threshold}",
         "-d", f"recombination_rate={recombination_rate}",
         "-d", f"sd_control_queen={sd_control_queen}",
         "-d", f"sd_control_colony={sd_control_colony}",
+        "-d", f'vcf_path="{vcf_path}/{vcf_name}"',
         str(slim_file)
     ]
-
     output = subprocess.run(
         command,
         capture_output=True,
@@ -74,8 +72,9 @@ def run_simulation(slim_file, slim_executable, simulation_len, k_traj, c_traj,
 
 
 
-def run_experiments(exp_name, project_root, slim_file, slim_executable, grid,
-                    defaults, simulation_len, carrying_capacity,
+def run_experiments(exp_name, project_root, slim_file,
+                    slim_executable, vcf_path, grid,
+                    defaults, simulation_len, vcf_name, carrying_capacity,
                     burn_in_time, k_bottlenecks, k_bottleneck_min,
                     burn_in = False):
 
@@ -98,18 +97,15 @@ def run_experiments(exp_name, project_root, slim_file, slim_executable, grid,
 
                 start = time.perf_counter()
 
-                #k_traj, c_traj = get_traj_no_burn_in(simulation_len,
-                 #                                    carrying_capacity)
-
-                k_vec, c_vec, k_arr, c_arr = get_traj(
+                k_vec, k_arr = get_traj(
                     simulation_len=simulation_len,
                     burn_in_time=burn_in_time,
                     burn_in_k=carrying_capacity,
                     k_bottlenecks=k_bottlenecks,
                     k_bottleneck_min=k_bottleneck_min)
 
-                data = run_simulation(slim_file, slim_executable,
-                                      simulation_len, k_vec, c_vec, **params)
+                data = run_simulation(slim_file, slim_executable, vcf_path, f'{vcf_name}_{i+1}',
+                                      simulation_len, k_vec, **params)
 
                 stop =  time.perf_counter()
                 duration = stop - start
@@ -118,9 +114,9 @@ def run_experiments(exp_name, project_root, slim_file, slim_executable, grid,
                 simulation_dict = (parse_to_dict(data))
 
                 df = pd.DataFrame.from_dict(simulation_dict)
+
                 ## add K and C trajector
                 df["K"] = k_arr[:len(df)]
-                df["C"] = c_arr[:len(df)]
 
                 # skip the first generation
                 df = df[df["generation"] > 30].reset_index(drop=True)
@@ -152,7 +148,7 @@ def main() -> None:
     simulation_len = int(argv[2])
     project_root = Path(__file__).resolve().parents[2]
     slim_file = project_root / "slim" / file_name
-
+    vcf_path = project_root / "data" / "test_vcf"
 
     if argv[3] == "local":
         slim_executable = Path.home() / "alt_software_versions/SLiM.V3.7/SLiM/build/slim"
@@ -172,9 +168,7 @@ def main() -> None:
         "max_queens_per_colony": 100,
         "max_colony_size": 200,
         "sex_ratio": 0.3,
-        "intra_specific_comp": "F",
         "p_colony_size_scaling": 0.8,
-        "c_intra_threshold": 0.8,
         "p_queen_success_scaling": 0.8,
         "p_population_size_scaling": 1.0,
         "p_new_queen_scaling": 0.5,
@@ -185,13 +179,13 @@ def main() -> None:
     }
 
     grid = ParameterGrid({
-        "p_colony_size_scaling": [0.75],
-        "p_population_size_scaling": [1.0],
+        "p_colony_size_scaling": [0.75, 0.9],
+        "p_population_size_scaling": [0.9, 1.0],
     })
 
-    run_experiments(argv[4], project_root, slim_file, slim_executable, grid,
+    run_experiments(argv[4], project_root, slim_file, slim_executable, vcf_path, grid,
                     defaults,
-                    simulation_len, carrying_capacity=15000,
+                    simulation_len, vcf_name = 'test_vcf', carrying_capacity=15000,
                     burn_in_time=1000, k_bottlenecks=2, k_bottleneck_min=7000,
                     burn_in=False)
 
